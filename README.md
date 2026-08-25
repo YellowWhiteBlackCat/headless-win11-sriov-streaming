@@ -331,6 +331,21 @@ If MultiMonitorTool is not installed yet, copy it from the host
 The old `DisplaySwitch /internal → /extended` sequence is a fallback only;
 it has been observed to disconnect VDD on this stack.
 
+**Moonlight pairs, the stream starts, but there is no video and Moonlight
+suggests checking UDP 47998/48000.** The video stream is a new inbound UDP
+flow from the guest to the host over the dedicated `sunshine-private` NIC
+(`virbr1`). The host's `ufw` `DEFAULT_INPUT_POLICY="DROP"` silently drops it
+(the audio probe passes only because it is an established-flow reply). Allow
+it once on the host:
+
+```bash
+sudo ufw allow in on virbr1 to any port 47998:48010 proto udp
+sudo ufw reload
+```
+
+Traffic split by design: SSH/Web UI/QGA use `192.168.122.50` (`default`);
+Moonlight control + video/audio use `192.168.200.2` (`sunshine-private`).
+
 **VNC is black after idle, but the VM is healthy.** Windows turned off the
 VirtIO monitor (default power plan turns displays off after ~5 minutes). Fix
 it permanently with `set-headless-power.ps1`; to wake the display immediately

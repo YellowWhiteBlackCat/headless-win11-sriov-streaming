@@ -174,8 +174,8 @@ The playbook uses **two** libvirt networks:
 
 | Network | Bridge | Subnet | Purpose |
 | --- | --- | --- | --- |
-| `default` | `virbr0` | `192.168.122.0/24` | NAT, management + SSH + Sunshine streaming |
-| `sunshine-private` | `virbr1` | `192.168.200.0/24` | isolated secondary link for Sunshine |
+| `default` | `virbr0` | `192.168.122.0/24` | NAT, management: SSH, Web UI, QGA, DHCP reservation |
+| `sunshine-private` | `virbr1` | `192.168.200.0/24` | **dedicated Moonlight streaming link** (isolated, no internet) |
 
 Templates: [config/libvirt/default-network.example.xml](config/libvirt/default-network.example.xml)
 and [config/libvirt/sunshine-private.example.xml](config/libvirt/sunshine-private.example.xml).
@@ -197,6 +197,9 @@ Important:
 - `sunshine-private` is isolated (no forwarding, no DHCP). The guest configures
   its second NIC statically as `192.168.200.2/24` with
   `scripts/guest/set-private-nic.ps1`; the host side is `192.168.200.1`.
+- Traffic split: SSH/Web UI/QGA go over `default` (`192.168.122.50`); Moonlight
+  control and video/audio go over `sunshine-private` (`192.168.200.2`). The
+  dedicated link is not for general internet traffic.
 - Add a convenient hostname on the host:
 
   ```text
@@ -207,12 +210,22 @@ Important:
 
 The reference host has **ufw installed and enabled**
 (`ENABLED=yes` in `/etc/ufw/ufw.conf`) with
-`DEFAULT_FORWARD_POLICY="DROP"`. That is fine for the primary use case:
+`DEFAULT_FORWARD_POLICY="DROP"` and `DEFAULT_INPUT_POLICY="DROP"`.
 
-- **Moonlight from the Linux host itself** (the common case in this playbook):
-  no extra firewall rule is needed. The host is the client, the guest is
-  reached over `virbr0`, and the ports `47984-48010` are already open inside
-  the Windows guest.
+For **Moonlight from the Linux host itself** (the common case in this
+playbook), one host rule is required. The video stream is a **new inbound UDP
+flow from the guest to the host** on `virbr1`; with
+`DEFAULT_INPUT_POLICY="DROP"` it is silently dropped even though the Windows
+guest firewall allows it (the audio probe appears to pass because it is a
+reply to an established flow). Add:
+
+```bash
+sudo ufw allow in on virbr1 to any port 47998:48010 proto udp
+sudo ufw reload
+```
+
+The Windows guest rules for `47984-48010` (TCP/UDP) are configured by
+`scripts/guest/setup-sunshine.ps1` and verified with `Get-NetFirewallRule`.
 
 Additional scenarios:
 
@@ -225,10 +238,10 @@ sudo ufw allow out on virbr0
 sudo ufw route allow in on virbr0
 sudo ufw reload
 
-# 2) Remote Moonlight clients reach the host from the LAN:
+# 2) Remote Moonlight clients reach the host from the LAN (host as gateway):
 sudo ufw allow 47984:48010/tcp
 sudo ufw allow 47998:48010/udp
-# then DNAT 47984-48010 on the host to 192.168.122.50 (or use a bridged NIC)
+# then DNAT 47984-48010 on the host to 192.168.200.2 (or use a bridged NIC)
 ```
 
 If you change ufw policy, verify the guest still reaches the host and that

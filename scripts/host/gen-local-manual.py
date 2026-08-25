@@ -249,11 +249,18 @@ ssh win-dev hostname                            # WIN11-NEW
 {facts.get('networks')}
 ```
 
-- `default`（virbr0 `{facts.get('virbr0')}`）：管理 + SSH + Sunshine，guest 固定 `192.168.122.50`
-- `sunshine-private`（virbr1 `{facts.get('virbr1')}`）：隔离备用链路，guest `192.168.200.2`
+- `default`（virbr0 `{facts.get('virbr0')}`）：管理网 —— SSH / Web UI / QGA，guest 固定 `192.168.122.50`
+- `sunshine-private`（virbr1 `{facts.get('virbr1')}`）：**Moonlight 专用串流网**，guest `192.168.200.2`（隔离、不连外网）
 
-`ufw` 已启用且 `DEFAULT_FORWARD_POLICY="DROP"`；本机 Moonlight 直连无需额外规则。
-局域网其他设备串流需要 ufw/DNAT（见 `{repo}/linux-prerequisites.md` §6）。
+`ufw` 已启用：`DEFAULT_FORWARD_POLICY="DROP"`、`DEFAULT_INPUT_POLICY="DROP"`。
+本机 Moonlight 串流需要宿主机放行“guest→host”的新 UDP 视频流：
+
+```bash
+sudo ufw allow in on virbr1 to any port 47998:48010 proto udp
+sudo ufw reload
+```
+
+局域网其他设备串流需要额外的 ufw/DNAT（见 `{repo}/linux-prerequisites.md` §6）。
 
 ---
 
@@ -340,6 +347,9 @@ virsh -c qemu:///system screenshot win11 ~/win11-check.png
 - Web UI：`https://192.168.122.50:47990`，账号 `sunshine` / `{sunshine_pw}`
 - 端口：`47984-48010`（guest 防火墙已放行 TCP/UDP）
 - 已配对客户端：`roth`（本机）
+- 流量分工：控制/视频/音频走专用串流网 `192.168.200.2`；管理网 `192.168.122.50`
+  只负责 SSH / Web UI / QGA。宿主机 ufw 必须放行 virbr1 的 UDP `47998-48010`
+  （见第 2 节），否则视频包会被 INPUT DROP 静默丢弃。
 
 ```bash
 moonlight list 192.168.122.50
@@ -394,13 +404,26 @@ virsh -c qemu:///system qemu-agent-command win11 \\
 
 上面的 QGA `guest-exec` 就是逃生通道，不依赖 Windows 网络栈。
 
-### D. 全黑 + QGA 也断
+### D. 串流无视频（Moonlight 提示检查 UDP 47998/48000）
+
+先确认宿主机 ufw 有这条规则（视频是 guest→host 的新入站 UDP 流，会被默认
+INPUT DROP 拦截；音频探测因为是已建立连接的回包所以能过）：
+
+```bash
+sudo ufw allow in on virbr1 to any port 47998:48010 proto udp
+sudo ufw reload
+```
+
+再确认会话确实走专用网：guest 上 `netstat -an | findstr 48010` 应看到
+`192.168.200.2:48010` 与 `192.168.200.1` 的连接。
+
+### E. 全黑 + QGA 也断
 
 1. `virsh -c qemu:///system send-key win11 KEY_LEFTMETA KEY_P`（Win+P）+ 方向键循环；
 2. 还不行就 `virsh -c qemu:///system destroy win11` 强停后 `start win11`；
 3. 最后手段：VNC over SSH 隧道进安全模式卸载 VDD。
 
-### E. 凭据状态自查（不打印明文）
+### F. 凭据状态自查（不打印明文）
 
 ```powershell
 # guest 上执行
@@ -409,7 +432,7 @@ C:\\Admin\\scripts\\get-credentials-status.ps1
 
 全部 `CRED OK` 即正常；有 `MISS` 按第 1 节同步密码副本。
 
-### F. 轮换密码
+### G. 轮换密码
 
 ```powershell
 net user vmadmin <新密码>
