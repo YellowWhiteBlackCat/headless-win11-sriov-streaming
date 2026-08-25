@@ -91,8 +91,8 @@ cp secrets.local.env.example secrets.local.env
 # edit ADMIN_PASSWORD
 
 ssh-keygen -t ed25519 -f admin_ed25519 -N ''
-cp admin_ed25519.pub.example admin_ed25519.pub
-# replace the placeholder line in admin_ed25519.pub with the generated key
+# admin_ed25519.pub now contains your real public key.
+# admin_ed25519.pub.example is only a format reference; do not copy it over your key.
 ```
 
 `secrets.local.env`, `admin_ed25519` and `admin_ed25519.pub` are git-ignored.

@@ -1,10 +1,29 @@
+param(
+    [string]$SecondNicMac = ''
+)
+
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
 
-# Second NIC is the one with MAC 52:54:00:40:CB:92 (Sunshine private network).
-$nic = Get-NetAdapter -Physical | Where-Object { $_.MacAddress -eq '52-54-00-40-CB-92' }
+# Resolve the target NIC MAC: -SecondNicMac -> $env:SECOND_NIC_MAC ->
+# C:\Admin\config\local-secrets.json (secondNicMac) -> fail with a NIC list.
+if (-not $SecondNicMac) { $SecondNicMac = $env:SECOND_NIC_MAC }
+if (-not $SecondNicMac) {
+    $localSecrets = 'C:\Admin\config\local-secrets.json'
+    if (Test-Path -LiteralPath $localSecrets) {
+        $SecondNicMac = (Get-Content -LiteralPath $localSecrets -Raw -Encoding UTF8 | ConvertFrom-Json).secondNicMac
+    }
+}
+if (-not $SecondNicMac) {
+    Write-Output 'No -SecondNicMac provided. Detected adapters:'
+    Get-NetAdapter -Physical | Format-Table Name, MacAddress, Status -AutoSize | Out-String | Write-Output
+    throw 'Provide -SecondNicMac, set $env:SECOND_NIC_MAC, or add secondNicMac to C:\Admin\config\local-secrets.json'
+}
+
+$mac = $SecondNicMac -replace '-', ''
+$nic = Get-NetAdapter -Physical | Where-Object { ($_.MacAddress -replace '-', '') -eq $mac }
 if (-not $nic) {
-    throw 'Second NIC not found by MAC 52:54:00:40:CB:92'
+    throw "Second NIC not found by MAC $SecondNicMac"
 }
 
 $existing = Get-NetIPAddress -InterfaceIndex $nic.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
