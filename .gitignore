@@ -1,0 +1,40 @@
+# Build artifacts / disk images
+*.iso
+*.qcow2
+*.raw
+*.img
+
+# Third-party binaries and archives.
+# Fetch them with scripts/download-assets.sh; never commit them.
+*.exe
+*.msi
+*.msixbundle
+*.zip
+*.7z
+*.dll
+*.pdb
+*.cat
+*.inf
+*.pem
+*.crt
+
+# Third-party source trees fetched by download-assets.sh
+drivers/
+apps/winget/
+
+# Runtime logs, screenshots and local scratch space
+logs/
+images/
+isos/
+
+# Local secrets and identity material
+admin_ed25519.pub
+admin_ed25519
+secrets*.env
+secrets*.json
+.env*
+*.local
+
+# OS / editor junk
+.DS_Store
+Thumbs.db

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "description": "Windows 11 guest 开箱即用应用清单（winget）",
+  "applications": [
+    {
+      "id": "Google.Chrome",
+      "name": "Google Chrome",
+      "category": "browser",
+      "required": true,
+      "note": "Sunshine Web UI / 日常浏览器"
+    },
+    {
+      "id": "7zip.7zip",
+      "name": "7-Zip",
+      "category": "utility",
+      "required": true,
+      "note": "压缩/解压"
+    },
+    {
+      "id": "Notepad++.Notepad++",
+      "name": "Notepad++",
+      "category": "editor",
+      "required": true,
+      "note": "轻量文本编辑"
+    },
+    {
+      "id": "Git.Git",
+      "name": "Git",
+      "category": "dev",
+      "required": true,
+      "note": "开发/脚本版本管理"
+    },
+    {
+      "id": "VideoLAN.VLC",
+      "name": "VLC media player",
+      "category": "media",
+      "required": false,
+      "note": "播放器"
+    },
+    {
+      "id": "Microsoft.PowerShell",
+      "name": "PowerShell 7",
+      "category": "dev",
+      "required": false,
+      "note": "现代 PowerShell"
+    },
+    {
+      "id": "Mozilla.Firefox",
+      "name": "Mozilla Firefox",
+      "category": "browser",
+      "required": false,
+      "note": "备用浏览器"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Do NOT commit your real public key. Copy this file to admin_ed25519.pub and
+# replace the placeholder with the output of: ssh-keygen -t ed25519 -f admin_ed25519 -N ''
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx your-name@your-host

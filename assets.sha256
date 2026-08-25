@@ -1,0 +1,8 @@
+# SHA-256 of the downloadable assets referenced by scripts/download-assets.sh.
+# Paths are relative to the repository root.
+55f70b3bf4df43b46f1c776903ded06e6f5acdb73538d005f4443d3043bd6853  drivers/IntelArcDriver/gfx_win_101.8974.exe
+a701f2272e9fcf382849b24f913c6dd07597b3b1116525f2e90182f019609154  drivers/VDD.Control.25.7.23.zip
+c8a8c7e21136a099665c2fad9accb41152d129466b719ea71678bab665e03389  drivers/openssh/OpenSSH-Win64-v9.8.3.0.msi
+0a3af3dde43b8f2c94ffe04b850ad736d6e1be2b75906779d7094a5ad9d4783b  drivers/Sunshine-portable.zip
+6824b6e9484ab24687d99a0c829d2bcbcc7849a70a4d0f596fc43c89d20dff15  apps/winget/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle
+50c377516749002dcdda9c8e52f26e8e2ea73d52131ce96ffd082dcf60ca6677  apps/winget/DesktopAppInstaller_Dependencies.zip
