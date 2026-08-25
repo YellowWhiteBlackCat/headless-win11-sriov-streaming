@@ -1,0 +1,13 @@
+[Unit]
+Description=Create unbound SR-IOV VFs on Intel GPU
+After=systemd-modules-load.service
+Wants=systemd-modules-load.service
+ConditionPathExists=/sys/bus/pci/devices/@PF@/sriov_numvfs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/intel-sriov-vf-create @PF@ @VF_COUNT@
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

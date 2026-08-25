@@ -1,0 +1,6 @@
+<network>
+  <name>sunshine-private</name>
+  <!-- Isolated network, no NAT, no DHCP: only the host and the guest can talk. -->
+  <bridge name='virbr1' stp='off' delay='0'/>
+  <ip address='192.168.200.1' netmask='255.255.255.0'/>
+</network>

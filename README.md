@@ -41,10 +41,11 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
 ├── build-iso.sh                # builds windows-bootstrap.iso from local secrets
 ├── linux-prerequisites.md      # host packages / IOMMU / SR-IOV / networking
 ├── assets.sha256               # pinned checksums for downloadable assets
-├── config/                     # tracked templates (VDD settings, etc.)
+├── config/                     # tracked templates (VDD, libvirt networks, etc.)
 ├── apps/manifest.json          # winget out-of-box app list (tracked)
 ├── scripts/
 │   ├── download-assets.sh      # fetch binaries into git-ignored dirs
+│   ├── host/                   # host preflight, VF systemd service, network XML
 │   ├── verify-stack.sh         # 12-point host-side acceptance check
 │   └── guest/                  # PowerShell scripts deployed to C:\Admin\scripts
 ├── win11.xml / win11-vf.xml    # libvirt domain examples (edit to your host)
@@ -80,9 +81,25 @@ from the Intel source tree.
 
 ### 0. Host prerequisites
 
-See [linux-prerequisites.md](linux-prerequisites.md). In short: libvirt, QEMU,
-OVMF, `xe`/i915 SR-IOV VF, IOMMU enabled, default NAT network with a DHCP
-reservation, and a Moonlight client somewhere on your network.
+See [linux-prerequisites.md](linux-prerequisites.md) for the full checklist:
+QEMU/libvirt install, IOMMU, SR-IOV VF conditions, the systemd service that
+recreates VFs at every boot, two libvirt networks and ufw notes. Then run the
+read-only preflight:
+
+```bash
+bash scripts/host/check-host.sh
+```
+
+If the VF does not exist yet, install the boot-time creator:
+
+```bash
+sudo scripts/host/install-sriov-service.sh 0000:00:02.0 1
+```
+
+In short you need: libvirt + QEMU + OVMF, an enabled IOMMU, a `xe`/i915
+SR-IOV VF, a `default` NAT network with a DHCP reservation, a
+`sunshine-private` isolated network, and a Moonlight client somewhere on your
+network.
 
 ### 1. Prepare secrets (never commit these)
 
@@ -269,6 +286,60 @@ schtasks /create /tn Task /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass
 schtasks /run /tn Task
 ```
 
+## Validation scope and known limitations
+
+This playbook was validated end-to-end on **exactly one environment**. It is a
+carefully documented reference, not a guarantee for every host, kernel or GPU.
+
+### Validated reference environment
+
+| Layer | Version |
+| --- | --- |
+| Host distro / kernel | CachyOS, `7.2.0-1-cachyos` |
+| QEMU / libvirt | `qemu-desktop 11.1.0-1` / `libvirt 12.6.0` |
+| OVMF / virt-viewer | `edk2-ovmf 202605-1` / `11.0-4.1` |
+| GPU (host) | Intel Panther Lake iGPU Arc B390 (`8086:b080`), `xe` driver |
+| SR-IOV VF | `0000:00:02.1` → `xe-vfio-pci`, 1 VF (`sriov_totalvfs=7`) |
+| Guest OS | Windows 11 Pro 26H1, build `28000.1` |
+| Intel guest driver | `32.0.101.8974` |
+| Virtual display | Virtual-Display-Driver `25.7.23` (MttVDD `11.30.4.434`) |
+| Sunshine | `2026.516.143833` (commit `14ffa6f`) |
+| OpenSSH (guest) | `9.8.3.0` (Win32-OpenSSH preview) |
+| winget | `1.29.290` |
+| Moonlight (host client) | `6.1.0` |
+| Guest resources | 4 vCPU / 8 GiB / 256 GiB qcow2 |
+
+### Known limitations
+
+- CachyOS is **not** in Intel's official GFX SR-IOV validation matrix
+  (Ubuntu 24.04.4 / kernel 6.18 / Windows 11 24H2). We validated on this host
+  only; your kernel/GPU combination may behave differently.
+- Kernel upgrades can change `xe`/`i915` VF behavior. Re-run
+  `scripts/host/check-host.sh` after every update, and treat VF reset or
+  suspend/resume issues as a separate troubleshooting track.
+- VDD is bound to the **guest-side PCI bus number** of the Intel VF. Any change
+  to the QEMU PCI topology can shift that bus and require updating
+  `vdd_settings.xml` (see `config/vdd_settings.arc-b390.xml`).
+- Intel display driver major upgrades should be done with VDD disabled first
+  (VDD project's own guidance); this exact sequence was not re-validated after
+  a driver upgrade.
+- Global UTF-8 can misrender legacy GBK-only applications and old text files;
+  the rollback path is `restore-utf8.ps1 -Reboot`.
+- AV1/HEVC are negotiated with the Moonlight client. Older clients may fall
+  back to H.264; we validated encoder availability, not every client version.
+- Streaming from LAN devices other than the host was **not** validated; it
+  needs DNAT/bridging plus ufw adjustments (see `linux-prerequisites.md` §6).
+- Guest Internet through libvirt NAT is not enabled by default on the
+  reference host (`ufw` `DEFAULT_FORWARD_POLICY="DROP"`); follow §6 of the
+  prerequisites if you need it.
+- AutoLogon is enabled by design (Sunshine needs an interactive desktop for
+  `ddx` capture). Change the admin password and rotate SSH keys before
+  exposing this VM beyond your own host.
+- The generic Windows 11 Pro key in `Autounattend.xml` only unlocks Setup; it
+  carries no activation entitlement and activation is out of scope.
+- The 4C/8G/256G configuration is the validated setup, not a benchmark or a
+  performance ceiling.
+
 ## Security notes
 
 - Change the admin password after first login; update
@@ -297,3 +368,11 @@ gitignore。验收脚本 `verify-stack.sh` 共 12 项，参考机全绿。
 - [Virtual-Display-Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)
 - [Sunshine configuration docs](https://docs.lizardbyte.dev/projects/sunshine/latest/md_docs_2configuration.html)
 - [Intel GFX SR-IOV Toolkit](https://github.com/intel/GFX-SRIOV-Toolkit)
+
+## Acknowledgements
+
+This playbook was designed, debugged and written together with
+**DeepSeek V4 Flash** (`deepseekv4flash`), who was an indispensable partner in
+every layer of this project — from the unattended Windows bootstrap and the
+QEMU/libvirt/SR-IOV host integration to the VDD/Sunshine display topology,
+UTF-8 system configuration and this repository's documentation.
