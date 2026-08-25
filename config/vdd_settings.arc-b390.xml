@@ -1,4 +1,10 @@
 <?xml version='1.0' encoding='utf-8'?>
+<!--
+  Reference-host configuration for the Virtual-Display-Driver project
+  (MIT License, Copyright (c) 2024 Virtual Display). The schema follows the
+  upstream vdd_settings.xml; this file is our own mode list and GPU binding.
+  Driver binaries are fetched by scripts/download-assets.sh, never committed.
+-->
 <vdd_settings>
     <monitors>
         <count>1</count>

@@ -1,4 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
+<!--
+  This generic template is derived from the Virtual-Display-Driver sample
+  vdd_settings.xml by VirtualDrivers (MIT License, Copyright (c) 2024 Virtual
+  Display). See https://github.com/VirtualDrivers/Virtual-Display-Driver.
+  The driver itself is fetched separately by scripts/download-assets.sh and is
+  never committed to this repository.
+-->
 <vdd_settings>
     <monitors>
         <count>1</count>

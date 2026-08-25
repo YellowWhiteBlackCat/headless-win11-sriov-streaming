@@ -405,6 +405,31 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 - The generic Windows 11 Pro key in `Autounattend.xml` is a public setup key
   (no activation entitlement). Replace it with your licensed key.
 
+## Third-party attribution and licensing
+
+This repository deliberately contains **no third-party source trees, binaries
+or license-restricted assets**. Everything external is fetched at build/install
+time from its official upstream project by `scripts/download-assets.sh`
+(pinned URL + SHA-256) or by the guest install scripts. What we commit is our
+own scripts, configs, docs and URL/hash records.
+
+| Project | How we use it | Upstream | Notes |
+| --- | --- | --- | --- |
+| Virtual-Display-Driver (VDD / VDC) | IDD virtual display; VDD settings schema | [VirtualDrivers/Virtual-Display-Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) | MIT; our `config/vdd_settings*.xml` derive from their sample and keep the license notice; driver binaries are fetched, never committed |
+| Intel GFX SR-IOV Toolkit | reference for VF/libvirt/SPICE layout | [intel/GFX-SRIOV-Toolkit](https://github.com/intel/GFX-SRIOV-Toolkit) | our domain XMLs/scripts are adapted examples, not their files |
+| Sunshine | streaming host | [LizardByte/Sunshine](https://github.com/LizardByte/Sunshine) | binaries fetched; config/scripts in this repo are ours |
+| Moonlight | streaming client | [moonlight-stream/moonlight-qt](https://github.com/moonlight-stream/moonlight-qt) | client only; not bundled |
+| Win32-OpenSSH | guest SSH server | [PowerShell/Win32-OpenSSH](https://github.com/PowerShell/Win32-OpenSSH) | MIT; MSI fetched |
+| winget-cli | offline App Installer | [microsoft/winget-cli](https://github.com/microsoft/winget-cli) | MIT; bundle fetched |
+| virtio-win | VirtIO drivers + QEMU Guest Agent | [Fedora virtio-win](https://fedorapeople.org/groups/virt/virtio-win/) | ISO fetched |
+| MultiMonitorTool | deterministic headless display topology | [NirSoft](https://www.nirsoft.net/utils/multi_monitor_tool.html) | freeware; executable fetched |
+| VB-CABLE | virtual audio endpoint for Sunshine | [VB-Audio](https://vb-audio.com/Cable/) | freeware; installer pack fetched, install script is ours |
+| Intel Arc Graphics driver | guest GPU driver | Intel Download Center | vendor EULA applies; installer fetched |
+| Microsoft Learn / Windows ADK | answer-file and OpenSSH references | links in References | documentation only |
+
+If you copy a file from this repository into your own project, keep the
+attribution comments that point back to the upstream projects.
+
 ## 维护者中文摘要
 
 本仓库把“完全无人值守的 Windows 11 + Intel Arc SR-IOV + Sunshine 串流”沉淀成
