@@ -1,0 +1,85 @@
+param(
+    [string]$ToolPath = 'C:\Admin\tools\MultiMonitorTool.exe',
+    [switch]$EnumOnly
+)
+
+$ErrorActionPreference = 'Stop'
+$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
+
+$logDir = 'C:\Admin\logs'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$csv = Join-Path $logDir 'monitors.csv'
+$log = Join-Path $logDir 'fix-display-topology.log'
+
+function Write-Log {
+    param([string]$Message)
+    $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Add-Content -Path $log -Value $line -Encoding utf8
+    Write-Output $line
+}
+
+if (-not (Test-Path -LiteralPath $ToolPath)) {
+    throw "MultiMonitorTool.exe not found at $ToolPath (copy it from drivers/MultiMonitorTool/ to C:\Admin\tools\)"
+}
+
+function Invoke-Mmt {
+    param([string[]]$Arguments)
+    $p = Start-Process -FilePath $ToolPath -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
+    if ($p.ExitCode -ne 0) {
+        Write-Log "MultiMonitorTool exit code: $($p.ExitCode) (args: $($Arguments -join ' '))"
+    }
+    return $p.ExitCode
+}
+
+Write-Log 'Enumerating monitors'
+Invoke-Mmt @('/scomma', "`"$csv`"") | Out-Null
+Start-Sleep -Seconds 3
+if (-not (Test-Path -LiteralPath $csv)) {
+    throw "MultiMonitorTool did not produce $csv"
+}
+$monitors = Import-Csv -Path $csv
+$monitors | Format-Table -AutoSize | Out-String -Width 260 | Write-Output
+Write-Log "Enumerated $($monitors.Count) monitors"
+
+if ($EnumOnly) {
+    return
+}
+
+# Identify the two displays we manage.
+$vdd = $monitors | Where-Object {
+    $_.'Monitor Name' -match 'VDD|MTT' -or $_.Name -match 'DISPLAY'
+} | Where-Object { $_.Adapter -match 'Virtual Display Driver' -or $_.'Monitor Name' -match 'VDD' } | Select-Object -First 1
+$qemu = $monitors | Where-Object {
+    $_.'Monitor Name' -match 'QEMU|RHT|Red Hat' -or $_.Adapter -match 'VirtIO'
+} | Select-Object -First 1
+
+if (-not $vdd) { throw 'Could not find the VDD (MTT) monitor in the monitor list' }
+if (-not $qemu) { throw 'Could not find the QEMU/VirtIO monitor in the monitor list' }
+
+$vddDevice = $vdd.Name
+$qemuDevice = $qemu.Name
+Write-Log "VDD device: $vddDevice"
+Write-Log "QEMU device: $qemuDevice"
+
+# Deterministic extended topology:
+#   - enable both monitors
+#   - put VDD to the right of the VirtIO rescue display
+#   - keep the VirtIO display primary
+Invoke-Mmt @('/enable', $vddDevice, $qemuDevice) | Out-Null
+Start-Sleep -Seconds 2
+Invoke-Mmt @('/EnableAtPosition', $vddDevice, '1280', '0') | Out-Null
+Start-Sleep -Seconds 2
+Invoke-Mmt @('/SetPrimary', $qemuDevice) | Out-Null
+Start-Sleep -Seconds 2
+
+# Save the working topology so future boots can restore it deterministically.
+$cfg = Join-Path $logDir 'monitors-topology.cfg'
+Invoke-Mmt @('/SaveConfig', "`"$cfg`"") | Out-Null
+Write-Log "Saved topology to $cfg"
+
+# Re-enumerate and show the result.
+Invoke-Mmt @('/scomma', "`"$csv`"") | Out-Null
+Start-Sleep -Seconds 3
+Import-Csv -Path $csv | Format-Table -AutoSize | Out-String -Width 260 | Write-Output
+
+Write-Log 'Display topology fix finished'

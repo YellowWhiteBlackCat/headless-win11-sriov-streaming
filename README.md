@@ -36,6 +36,7 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
 
 ```text
 .
+├── CREDENTIALS.md               # credential inventory + rotation (template only)
 ├── Autounattend.xml            # unattended Windows Setup answer file
 ├── bootstrap.ps1 / .cmd        # specialize-phase guest bootstrap
 ├── build-iso.sh                # builds windows-bootstrap.iso from local secrets
@@ -60,6 +61,8 @@ Binaries are deliberately **not** committed:
 | --- | --- | --- |
 | Intel Arc Graphics driver | guest GPU driver | Intel Download Center (pinned URL + SHA-256) |
 | VDD Control 25.7.23 | IDD virtual display driver | VirtualDrivers GitHub release |
+| MultiMonitorTool | deterministic headless display topology | NirSoft (pinned URL + SHA-256) |
+| VB-CABLE 4.5 | signed virtual audio cable for Sunshine audio | VB-Audio (pinned URL + SHA-256) |
 | OpenSSH Win64 MSI | offline SSH server install | PowerShell/Win32-OpenSSH GitHub release |
 | Sunshine portable | streaming host | LizardByte GitHub release |
 | winget bundle + deps | offline App Installer | microsoft/winget-cli GitHub release |
@@ -105,7 +108,7 @@ network.
 
 ```bash
 cp secrets.local.env.example secrets.local.env
-# edit ADMIN_PASSWORD
+# edit ADMIN_PASSWORD and SUNSHINE_WEB_PASSWORD
 
 ssh-keygen -t ed25519 -f admin_ed25519 -N ''
 # admin_ed25519.pub now contains your real public key.
@@ -113,6 +116,8 @@ ssh-keygen -t ed25519 -f admin_ed25519 -N ''
 ```
 
 `secrets.local.env`, `admin_ed25519` and `admin_ed25519.pub` are git-ignored.
+The full credential inventory and rotation instructions live in
+[CREDENTIALS.md](CREDENTIALS.md).
 
 ### 2. Fetch assets
 
@@ -174,6 +179,7 @@ ssh -o BatchMode=yes vmadmin@win11 hostname
 ```
 
 Reference result (2026-08-25): `PASS=12 FAIL=0`.
+Reference result (2026-08-26, after the VDD topology fix): `PASS=12 FAIL=0`.
 
 ## Guest-side scripts
 
@@ -185,15 +191,25 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
 | `install-apps.ps1` | install `apps/manifest.json` via winget |
 | `install-vdd.ps1` | install VDD from the driver package |
 | `trust-vdd.ps1` | trust the VDD signer certificate |
+| `set-sunshine-creds.ps1` | set/rotate the Sunshine Web UI credentials |
 | `setup-sunshine.ps1` | copy Sunshine, create service, base config |
 | `configure-sunshine.ps1` | point Sunshine at the VDD output GUID |
+| `fix-display-topology.ps1` | keep VirtIO + VDD active via MultiMonitorTool |
+| `install-vb-cable.ps1` | install the signed VB-CABLE virtual audio device |
 | `set-display-extend.ps1` | keep VirtIO + VDD in extended mode |
 | `set-headless-power.ps1` | disable monitor/sleep/hibernate timeouts |
-| `setup-display-logontask.ps1` | re-apply topology at every logon |
+| `setup-display-logontask.ps1` | re-apply topology at every logon (uses `fix-display-topology.ps1` when MultiMonitorTool is present) |
 | `setup-deadman.ps1` | scheduled VDD-disable fallback after changes |
 | `display-rescue.ps1` | disable VDD + reboot (runs via QGA if needed) |
+| `get-credentials-status.ps1` | audit where credentials live without printing them |
 | `set-utf8.ps1` / `restore-utf8.ps1` | enable / roll back global UTF-8 |
 | `enable-autologon.ps1` / `disable-autologon.ps1` | interactive-session AutoLogon |
+
+Copy `drivers/MultiMonitorTool/MultiMonitorTool.exe` from the download step to
+`C:\Admin\tools\MultiMonitorTool.exe` on the guest before running
+`setup-display-logontask.ps1`. Copy the VB-CABLE driver files
+(`drivers/VBCABLE/vbMmeCable64_win10.*`) to `C:\Admin\VBCABLE\` and run
+`install-vb-cable.ps1` once to give Sunshine an audio endpoint.
 
 ## Display stack
 
@@ -201,15 +217,29 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
   VNC only, low-resolution fallback. Never set
   `<video><model type='none'/></video>`.
 - **VDD** (`ROOT\DISPLAY\0000`, Virtual-Display-Driver 25.7.23, IDD): one
-  virtual monitor, 800x600 – 3840x2160 with 30/60/90/120/144/165/240 Hz modes,
-  bound to the guest-side PCI bus of the Intel VF (`Intel(R) Arc(TM) B390 GPU,6`
-  on the reference host).
+  virtual monitor, 16:9 (up to 3840x2160) and 16:10 (up to 3200x2000) modes at
+  30/60/90/120/144/165 Hz, bound to the guest-side PCI bus of the Intel VF
+  (`Intel(R) Arc(TM) B390 GPU,6` on the reference host).
 - **Sunshine**: `capture=ddx`, `encoder=quicksync`,
   `adapter_name=Intel(R) Arc(TM) B390 GPU`,
   `output_name=<VDD device_id GUID>`,
   `dd_configuration_option=ensure_primary`,
   `dd_resolution_option=auto`, `dd_refresh_rate_option=auto`,
   `dd_config_revert_on_disconnect=enabled`.
+- **Topology**: `DisplaySwitch.exe` alone can race and leave one display
+  disconnected, which makes Sunshine fail with `Failed to locate an output
+  device`. `fix-display-topology.ps1` uses MultiMonitorTool to deterministically
+  enable both monitors, place VDD to the right of VirtIO and keep VirtIO
+  primary.
+- **Modes**: the VDD settings advertise 16:9 and 16:10 modes from 800x600 up to
+  3840x2160 at 30/60/90/120/144/165 Hz, including the reference client's native
+  **3200x2000 @ 165 Hz**. Sunshine applies the client resolution/refresh on
+  connect (`dd_resolution_option=auto`, `dd_refresh_rate_option=auto`).
+- **Audio**: the guest has **VB-CABLE** installed as its only audio device;
+  Sunshine captures `F32 48000 2.0` from `CABLE Input`. The kernel-mode
+  `Virtual Audio Driver` from the VDD project is **rejected by this Windows
+  build** (`CM_PROB_UNSIGNED_DRIVER`, error 0xC0000428), so the signed
+  VB-CABLE driver is used instead.
 - **Headless power policy**: run `set-headless-power.ps1` once so Windows never
   turns off the VirtIO rescue display or sleeps (a 5-minute display timeout
   makes VNC go black even though the VM is healthy).
@@ -269,6 +299,22 @@ This disables `ROOT\DISPLAY\0000` and reboots; the VirtIO display comes back.
 Re-enable with `pnputil /enable-device "ROOT\DISPLAY\0000"` and re-run
 `set-display-extend.ps1`.
 
+**Sunshine starts but logs `Failed to locate an output device` (or
+`Found no working encoder`) while VNC is fine.** The VDD virtual monitor is
+present but Windows did not connect it to a display path. Run the deterministic
+topology fix in the interactive session and restart Sunshine:
+
+```powershell
+# on the guest, as vmadmin
+C:\Admin\scripts\fix-display-topology.ps1
+Restart-Service SunshineService
+```
+
+If MultiMonitorTool is not installed yet, copy it from the host
+(`drivers/MultiMonitorTool/MultiMonitorTool.exe`) to `C:\Admin\tools\` first.
+The old `DisplaySwitch /internal → /extended` sequence is a fallback only;
+it has been observed to disconnect VDD on this stack.
+
 **VNC is black after idle, but the VM is healthy.** Windows turned off the
 VirtIO monitor (default power plan turns displays off after ~5 minutes). Fix
 it permanently with `set-headless-power.ps1`; to wake the display immediately
@@ -325,6 +371,11 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   a driver upgrade.
 - Global UTF-8 can misrender legacy GBK-only applications and old text files;
   the rollback path is `restore-utf8.ps1 -Reboot`.
+- The VDD project's kernel-mode Virtual Audio Driver is rejected by this
+  Windows build (`CM_PROB_UNSIGNED_DRIVER` / `0xC0000428`); the playbook uses
+  the signed VB-CABLE driver instead. Kernel drivers signed only by third-party
+  code-signing CAs (e.g. ViGEmBus for gamepads) should be expected to hit the
+  same policy and were not validated here.
 - AV1/HEVC are negotiated with the Moonlight client. Older clients may fall
   back to H.264; we validated encoder availability, not every client version.
 - Streaming from LAN devices other than the host was **not** validated; it
@@ -342,9 +393,14 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 
 ## Security notes
 
-- Change the admin password after first login; update
-  `secrets.local.env`, AutoLogon scripts and the local secrets file together.
-- Never commit `secrets.local.env`, `admin_ed25519*` or any binary asset.
+- See [CREDENTIALS.md](CREDENTIALS.md) for the full inventory: Windows admin
+  password, SSH key pair, Sunshine Web UI password and Moonlight pairing.
+  `get-credentials-status.ps1` audits the guest-side copies without printing
+  values.
+- Change the admin password after first login; update `secrets.local.env`,
+  `C:\Admin\config\local-secrets.json` and AutoLogon together.
+- Never commit `secrets.local.env`, `admin_ed25519*`, guest
+  `local-secrets.json`, `sunshine_state.json` or any binary asset.
 - VNC listens on `127.0.0.1` only; reach it through an SSH tunnel if remote.
 - The generic Windows 11 Pro key in `Autounattend.xml` is a public setup key
   (no activation entitlement). Replace it with your licensed key.

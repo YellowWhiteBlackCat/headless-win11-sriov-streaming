@@ -35,7 +35,7 @@ for arg in "$@"; do
     esac
 done
 
-mkdir -p "$DRIVERS/IntelArcDriver" "$DRIVERS/openssh" "$DRIVERS/Sunshine" "$WINGET"
+mkdir -p "$DRIVERS/IntelArcDriver" "$DRIVERS/openssh" "$DRIVERS/Sunshine" "$WINGET" "$DRIVERS/MultiMonitorTool" "$DRIVERS/VBCABLE"
 
 verify_sha() {
     local file="$1" expected="$2"
@@ -86,6 +86,34 @@ if [[ ! -f "$DRIVERS/VDD-Control/SignedDrivers/x86/VDD/MttVDD.inf" ]]; then
     unzip -q -o "$VDD_ZIP" -d "$DRIVERS/VDD-Control"
 else
     echo "exists: $DRIVERS/VDD-Control (already extracted)"
+fi
+
+# --- MultiMonitorTool (deterministic headless display topology) --------------
+MMT_URL="${MMT_URL:-https://www.nirsoft.net/utils/multimonitortool-x64.zip}"
+MMT_SHA="9227764723f4b011f066a88b36b5a64bf81c9e3fa044356e877820319efe1c58"
+MMT_ZIP="$DRIVERS/MultiMonitorTool/MMT.zip"
+
+if [[ ! -f "$DRIVERS/MultiMonitorTool/MultiMonitorTool.exe" ]]; then
+    download "$MMT_URL" "$MMT_ZIP"
+    verify_sha "$MMT_ZIP" "$MMT_SHA"
+    echo "extracting $MMT_ZIP -> $DRIVERS/MultiMonitorTool/"
+    unzip -q -o "$MMT_ZIP" -d "$DRIVERS/MultiMonitorTool/"
+else
+    echo "exists: $DRIVERS/MultiMonitorTool/MultiMonitorTool.exe"
+fi
+
+# --- VB-CABLE (signed virtual audio driver for Sunshine audio) ----------------
+VBC_URL="${VBC_URL:-https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip}"
+VBC_SHA="b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb"
+VBC_ZIP="$DRIVERS/VBCABLE/VBCABLE_Driver_Pack45.zip"
+
+if [[ ! -f "$DRIVERS/VBCABLE/vbMmeCable64_win10.inf" ]]; then
+    download "$VBC_URL" "$VBC_ZIP"
+    verify_sha "$VBC_ZIP" "$VBC_SHA"
+    echo "extracting $VBC_ZIP -> $DRIVERS/VBCABLE/"
+    unzip -q -o "$VBC_ZIP" -d "$DRIVERS/VBCABLE/"
+else
+    echo "exists: $DRIVERS/VBCABLE (already extracted)"
 fi
 
 # --- OpenSSH for Windows -----------------------------------------------------
