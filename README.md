@@ -181,6 +181,22 @@ ssh -o BatchMode=yes vmadmin@win11 hostname
 Reference result (2026-08-25): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the VDD topology fix): `PASS=12 FAIL=0`.
 
+### 6. Local maintenance manual (one command)
+
+The public repository never contains real passwords or machine-specific
+secrets. To get a complete, up-to-date **local** survival manual (plaintext
+passwords, live host/guest state, recovery steps), run on the real host:
+
+```bash
+python3 scripts/host/gen-local-manual.py
+```
+
+It reads the git-ignored `secrets.local.env`, probes the host (VF count,
+networks, domain, guest OS/Sunshine versions over SSH) and writes
+`win11-vm-manual.md` (mode 0600) to your download directory. Override the
+target with `OUTPUT_DIR=/path`. Regenerate it after any password rotation or
+hardware change — it is the "what do I do if the agent is gone" document.
+
 ## Guest-side scripts
 
 Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
@@ -401,6 +417,8 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   `C:\Admin\config\local-secrets.json` and AutoLogon together.
 - Never commit `secrets.local.env`, `admin_ed25519*`, guest
   `local-secrets.json`, `sunshine_state.json` or any binary asset.
+- Run `scripts/host/gen-local-manual.py` to produce the local secret-bearing
+  manual; keep it at mode 0600 and never upload it.
 - VNC listens on `127.0.0.1` only; reach it through an SSH tunnel if remote.
 - The generic Windows 11 Pro key in `Autounattend.xml` is a public setup key
   (no activation entitlement). Replace it with your licensed key.

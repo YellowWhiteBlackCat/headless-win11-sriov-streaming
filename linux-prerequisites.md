@@ -236,6 +236,41 @@ If you change ufw policy, verify the guest still reaches the host and that
 iptables/nftables; keep the changes above explicit instead of disabling the
 firewall.
 
+## 6.1 Known host pitfalls
+
+### OpenSSH refuses to start: `Bad owner or permissions on ...ssh_config.d...`
+
+OpenSSH requires system config files under `/etc/ssh/` to be owned by
+`root`. If you see this error when running `ssh win-dev`:
+
+```text
+Bad owner or permissions on /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf
+```
+
+check ownership first:
+
+```bash
+ls -l /etc/ssh/ssh_config.d/
+```
+
+On a healthy host these are `root:root` and plain `ssh win-dev` works. If they
+are owned by another user (often after container/sandbox file remapping or a
+bad package extraction):
+
+```bash
+sudo chown -h root:root /etc/ssh/ssh_config.d/*
+```
+
+Until it is fixed, `ssh -F ~/.ssh/config win-dev` bypasses the system config
+and works as a temporary workaround.
+
+### Persistent XML changes require a cold restart
+
+`virsh reboot win11` only reboots the guest OS; the running QEMU device model
+stays unchanged. After editing the persistent domain XML (for example removing
+install ISO drives), use `virsh shutdown win11` and then `virsh start win11`.
+Verify with `virsh domblklist win11` / `domiflist win11`.
+
 ## 7. Storage
 
 Keep images on a fast, stable filesystem — never `/tmp`. On the reference host
