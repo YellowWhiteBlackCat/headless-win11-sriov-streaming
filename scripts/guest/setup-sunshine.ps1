@@ -62,6 +62,7 @@ foreach ($conf in @((Join-Path $destRoot 'config\sunshine.conf'), (Join-Path $co
     Set-ConfValue -Path $conf -Key 'hevc_mode' -Value '0'
     Set-ConfValue -Path $conf -Key 'qsv_preset' -Value 'medium'
     Set-ConfValue -Path $conf -Key 'qsv_async_depth' -Value '1'
+    Set-ConfValue -Path $conf -Key 'min_log_level' -Value 'info'
     Set-ConfValue -Path $conf -Key 'bind_address' -Value '0.0.0.0'
     Set-ConfValue -Path $conf -Key 'upnp' -Value 'disabled'
     Set-ConfValue -Path $conf -Key 'address_family' -Value 'ipv4'

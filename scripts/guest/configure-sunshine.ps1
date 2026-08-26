@@ -48,6 +48,7 @@ foreach ($config in $configs) {
     Set-ConfValue -Path $config -Key 'hevc_mode' -Value $HevcMode
     Set-ConfValue -Path $config -Key 'qsv_preset' -Value $QsvPreset
     Set-ConfValue -Path $config -Key 'qsv_async_depth' -Value $QsvAsyncDepth
+    Set-ConfValue -Path $config -Key 'min_log_level' -Value 'info'
 }
 
 # Prefer the interactive scheduled task (production path); fall back to the
