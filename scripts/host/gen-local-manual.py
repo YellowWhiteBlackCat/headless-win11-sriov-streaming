@@ -2,7 +2,7 @@
 """Generate the local, human-readable maintenance manual for this VM.
 
 The repository itself is public and must stay sanitized. This script is the
-intended bridge: it reads the git-ignored ``secrets.local.env`` and live host
+intended bridge: it reads the git-ignored ``secrets/secrets.local.env`` and live host
 state, then writes a complete plaintext manual (with real passwords) to the
 user's download directory, mode 0600.
 
@@ -30,7 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-SECRETS = REPO / "secrets.local.env"
+SECRETS = REPO / "secrets/secrets.local.env"
 
 
 def run(cmd: list[str], timeout: int = 10) -> str:
@@ -233,7 +233,7 @@ ssh win-dev hostname                            # WIN11-NEW
 
 密码副本存放位置（改密码时必须同步全部）：
 
-1. 宿主机 `{repo}/secrets.local.env`（`ADMIN_PASSWORD` / `SUNSHINE_WEB_PASSWORD`）
+1. 宿主机 `{repo}/secrets/secrets.local.env`（`ADMIN_PASSWORD` / `SUNSHINE_WEB_PASSWORD`）
 2. guest `C:\\Admin\\config\\local-secrets.json`（`adminPassword` / `sunshineWebPassword` / `secondNicMac`）
 3. AutoLogon 注册表 `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\DefaultPassword`
 4. Sunshine 哈希 `C:\\Program Files\\Sunshine\\config\\sunshine_state.json`（不要手改）
@@ -525,7 +525,7 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 # 不想立刻重启加 -NoReboot
 ```
 
-改完必须同步：宿主 `{repo}/secrets.local.env` + guest
+改完必须同步：宿主 `{repo}/secrets/secrets.local.env` + guest
 `C:\\Admin\\config\\local-secrets.json`，然后重新生成本手册。完整流程见 `{repo}/CREDENTIALS.md`。
 
 ---
@@ -535,8 +535,8 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 | 位置 | 内容 |
 | --- | --- |
 | `{repo}` | 全部脚本/文档/模板（git 仓库） |
-| `{repo}/secrets.local.env` | 明文密码（git-ignored） |
-| `{repo}/admin_ed25519` / `.pub` | SSH 私钥 / 公钥（git-ignored，与 `~/.ssh/id_ed25519` 相同） |
+| `{repo}/secrets/secrets.local.env` | 明文密码（git-ignored） |
+| `{repo}/secrets/admin_ed25519` / `.pub` | SSH 私钥 / 公钥（git-ignored，与 `~/.ssh/id_ed25519` 相同） |
 | `{out}` | 本手册 |
 | `{data_root}/libvirt/win11/win11.qcow2` | guest 系统盘 |
 | `{data_root}/iso/Win11.iso` | 重装用 Windows ISO（当前未挂载） |
@@ -602,7 +602,7 @@ def main() -> int:
     if "ADMIN_PASSWORD" not in secrets or "SUNSHINE_WEB_PASSWORD" not in secrets:
         print(
             f"ERROR: {SECRETS} is missing ADMIN_PASSWORD/SUNSHINE_WEB_PASSWORD.\n"
-            "Copy secrets.local.env.example to secrets.local.env and fill it in.",
+            "Copy secrets.local.env.example to secrets/secrets.local.env and fill it in.",
             file=sys.stderr,
         )
         return 1

@@ -103,7 +103,7 @@ bash scripts/host/check-host.sh
 If the VF does not exist yet, install the boot-time creator:
 
 ```bash
-sudo scripts/host/install-sriov-service.sh 0000:00:02.0 1
+sudo scripts/host/install-sriov-service.sh 0000:00:02.0 2
 ```
 
 In short you need: libvirt + QEMU + OVMF, an enabled IOMMU, a `xe`/i915
@@ -114,15 +114,16 @@ network.
 ### 1. Prepare secrets (never commit these)
 
 ```bash
-cp secrets.local.env.example secrets.local.env
+mkdir -p secrets
+cp secrets.local.env.example secrets/secrets.local.env
 # edit ADMIN_PASSWORD and SUNSHINE_WEB_PASSWORD
 
-ssh-keygen -t ed25519 -f admin_ed25519 -N ''
-# admin_ed25519.pub now contains your real public key.
+ssh-keygen -t ed25519 -f secrets/admin_ed25519 -N ''
+# secrets/admin_ed25519.pub now contains your real public key.
 # admin_ed25519.pub.example is only a format reference; do not copy it over your key.
 ```
 
-`secrets.local.env`, `admin_ed25519` and `admin_ed25519.pub` are git-ignored.
+The real files live under `secrets/`, which is git-ignored as a whole directory.
 The full credential inventory and rotation instructions live in
 [CREDENTIALS.md](CREDENTIALS.md).
 
@@ -209,7 +210,7 @@ passwords, live host/guest state, recovery steps), run on the real host:
 python3 scripts/host/gen-local-manual.py
 ```
 
-It reads the git-ignored `secrets.local.env`, probes the host (VF count,
+It reads the git-ignored `secrets/secrets.local.env`, probes the host (VF count,
 networks, domain, guest OS/Sunshine versions over SSH) and writes
 `win11-vm-manual.md` (mode 0600) to your download directory. Override the
 target with `OUTPUT_DIR=/path`. Regenerate it after any password rotation or
@@ -669,9 +670,9 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   password, SSH key pair, Sunshine Web UI password and Moonlight pairing.
   `get-credentials-status.ps1` audits the guest-side copies without printing
   values.
-- Change the admin password after first login; update `secrets.local.env`,
+- Change the admin password after first login; update `secrets/secrets.local.env`,
   `C:\Admin\config\local-secrets.json` and AutoLogon together.
-- Never commit `secrets.local.env`, `admin_ed25519*`, guest
+- Never commit `secrets/` (passwords + SSH keys), guest
   `local-secrets.json`, `sunshine_state.json` or any binary asset.
 - Run `scripts/host/gen-local-manual.py` to produce the local secret-bearing
   manual; keep it at mode 0600 and never upload it.
@@ -726,7 +727,7 @@ API 恢复（Sunshine 日志 `API is available: true`），不再需要任何模
 FFmpeg 工具链。
 所有驱动、
 安装包都不入库，通过 `scripts/download-assets.sh` 按 `assets.sha256`
-下载；真实密码与 SSH 密钥由 `secrets.local.env` 等本地文件注入并被
+下载；真实密码与 SSH 密钥由 `secrets/secrets.local.env` 等本地文件注入并被
 gitignore。验收脚本 `verify-stack.sh` 共 15 项，参考机全绿。
 
 ## References

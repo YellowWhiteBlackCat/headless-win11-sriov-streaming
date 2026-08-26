@@ -12,8 +12,8 @@ committed to this repository.** This file is the single place that documents:
 
 | Credential | Used by | Real value stored at | Injected via |
 | --- | --- | --- | --- |
-| Windows admin password (`vmadmin`) | local user, SSH password fallback, AutoLogon | host: `secrets.local.env` → `ADMIN_PASSWORD`; guest: `C:\Admin\config\local-secrets.json` → `adminPassword`; AutoLogon: `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultPassword` | `build-iso.sh` writes `bootstrap.env` on the bootstrap ISO; `bootstrap.ps1` creates the user; `enable-autologon.ps1` / `set-autologon-permanent.ps1` write the Winlogon key |
-| SSH key pair | passwordless `ssh vmadmin@<guest>` | host: `admin_ed25519` (private) + `admin_ed25519.pub` (both git-ignored); guest: `C:\ProgramData\ssh\administrators_authorized_keys` (ACL: `S-1-5-32-544:F`, `SYSTEM:F`) | `build-iso.sh` embeds the public key into the bootstrap ISO; `bootstrap.ps1` writes it and fixes the ACL |
+| Windows admin password (`vmadmin`) | local user, SSH password fallback, AutoLogon | host: `secrets/secrets.local.env` → `ADMIN_PASSWORD`; guest: `C:\Admin\config\local-secrets.json` → `adminPassword`; AutoLogon: `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultPassword` | `build-iso.sh` writes `bootstrap.env` on the bootstrap ISO; `bootstrap.ps1` creates the user; `enable-autologon.ps1` / `set-autologon-permanent.ps1` write the Winlogon key |
+| SSH key pair | passwordless `ssh vmadmin@<guest>` | host: `secrets/admin_ed25519` (private) + `secrets/admin_ed25519.pub` (both git-ignored); guest: `C:\ProgramData\ssh\administrators_authorized_keys` (ACL: `S-1-5-32-544:F`, `SYSTEM:F`) | `build-iso.sh` embeds the public key into the bootstrap ISO; `bootstrap.ps1` writes it and fixes the ACL |
 | Sunshine Web UI user | `https://<guest>:47990` login | username fixed: `sunshine`; password: guest `C:\Admin\config\local-secrets.json` → `sunshineWebPassword`; hash+salt: `C:\Program Files\Sunshine\config\sunshine_state.json` | `set-sunshine-creds.ps1` reads `-Password` → `$env:SUNSHINE_WEB_PASSWORD` → guest local secrets, then writes the state file and the guest local secrets |
 | Moonlight pairing | stream authentication | host: `~/.config/Moonlight Game Streaming Project/Moonlight.conf` (client cert/private key); guest: `sunshine_state.json` → `paired_clients` | first `moonlight pair` flow |
 | Windows product key | Setup only, no activation | `Autounattend.xml` (public generic key) | answer file |
@@ -22,12 +22,12 @@ committed to this repository.** This file is the single place that documents:
 
 ## Local secret files
 
-Host (`secrets.local.env`, git-ignored; template: `secrets.local.env.example`):
+Host (`secrets/secrets.local.env`, git-ignored; template: `secrets.local.env.example`):
 
 ```bash
 ADMIN_PASSWORD=...
 SUNSHINE_WEB_PASSWORD=...
-SSH_PUB_KEY=admin_ed25519.pub   # optional, defaults to repo root
+SSH_PUB_KEY=secrets/admin_ed25519.pub   # optional, defaults to secrets/
 ```
 
 Guest (`C:\Admin\config\local-secrets.json`, never part of this repo;
@@ -75,7 +75,7 @@ net user vmadmin <new-password>
 C:\Admin\scripts\set-autologon-permanent.ps1 -UserName vmadmin -Password <new-password>
 ```
 
-Then update the host copy (`secrets.local.env` → `ADMIN_PASSWORD`) and the
+Then update the host copy (`secrets/secrets.local.env` → `ADMIN_PASSWORD`) and the
 guest JSON (`C:\Admin\config\local-secrets.json` → `adminPassword`). A reboot
 is not required for the password itself, but AutoLogon takes effect at the
 next logon.
@@ -84,16 +84,16 @@ next logon.
 
 ```bash
 # on the host
-ssh-keygen -t ed25519 -f admin_ed25519 -N ''
+ssh-keygen -t ed25519 -f secrets/admin_ed25519 -N ''
 
 # replace the guest's authorized key
-scp admin_ed25519.pub win-dev:C:\Admin\admin_ed25519.pub.new
+scp secrets/admin_ed25519.pub win-dev:C:\Admin\admin_ed25519.pub.new
 ssh win-dev 'type C:\Admin\admin_ed25519.pub.new > C:\ProgramData\ssh\administrators_authorized_keys'
 ssh win-dev 'icacls C:\ProgramData\ssh\administrators_authorized_keys /inheritance:r /grant "*S-1-5-32-544:F" /grant "SYSTEM:F"'
 ssh win-dev 'Restart-Service sshd'
 ```
 
-Also update `admin_ed25519.pub` in the bootstrap directory for future
+Also update `secrets/admin_ed25519.pub` in the bootstrap directory for future
 reinstalls, and remove the old public key from any other machines that used it.
 
 ### Sunshine Web UI
@@ -111,7 +111,7 @@ the virtual display is inactive). Use `-NoReboot` if you plan to reboot later.
 Afterwards update the host copy:
 
 ```bash
-# secrets.local.env
+# secrets/secrets.local.env
 SUNSHINE_WEB_PASSWORD=<new-password>
 ```
 
@@ -136,7 +136,7 @@ Project/`; the guest stores the paired client in `sunshine_state.json`.
 
 ## Policy
 
-- `secrets.local.env`, `admin_ed25519*`, `C:\Admin\config\local-secrets.json`
+- `secrets/` (passwords + SSH keys), `C:\Admin\config\local-secrets.json`
   and `sunshine_state.json` are never committed.
 - Use different passwords for the Windows admin account and the Sunshine Web
   UI.

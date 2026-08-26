@@ -51,10 +51,11 @@ Agent and record the environment-specific result.
 
 ## Security & Configuration
 
-Start from `secrets.local.env.example` and `config/*example*`; never commit
-passwords, private keys, local secret JSON, downloaded binaries, or real
-machine-specific credentials. Review `CREDENTIALS.md` when changing bootstrap,
-AutoLogon, SSH, or Sunshine authentication behavior.
+Start from `secrets.local.env.example` and `config/*example*`; keep real
+values under the git-ignored `secrets/` directory and never commit passwords,
+private keys, local secret JSON, downloaded binaries, or real machine-specific
+credentials. Review `CREDENTIALS.md` when changing bootstrap, AutoLogon, SSH,
+or Sunshine authentication behavior.
 
 ## Commit & Pull Request Guidelines
 

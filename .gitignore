@@ -28,17 +28,13 @@ images/
 isos/
 .build/
 .debug/
+/vm-tests/win11-visibility-test/
 __pycache__/
 *.pyc
 
-# Local secrets and identity material
-admin_ed25519.pub
-admin_ed25519
-secrets*.env
-secrets*.json
+# Local secrets and identity material (keep real files under secrets/)
+secrets/
 .env*
 *.local
 
-# OS / editor junk
-.DS_Store
-Thumbs.db
+# OS / editor junk is best handled by the user's global gitignore

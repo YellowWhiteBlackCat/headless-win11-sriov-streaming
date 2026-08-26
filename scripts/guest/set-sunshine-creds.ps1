@@ -44,7 +44,7 @@ $secrets | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $localSecrets -Enc
 
 Write-Output "Sunshine Web UI credentials updated for user '$Username'"
 Write-Output "Saved the new password to $localSecrets"
-Write-Output 'REMINDER: also update SUNSHINE_WEB_PASSWORD in secrets.local.env on the Linux host'
+Write-Output 'REMINDER: also update SUNSHINE_WEB_PASSWORD in secrets/secrets.local.env on the Linux host'
 Write-Output 'A reboot applies the new credentials and restarts Sunshine with the VDD display active.'
 
 if (-not $NoReboot) {
