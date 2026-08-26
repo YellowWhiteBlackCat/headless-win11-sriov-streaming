@@ -377,6 +377,22 @@ either.
   turns off the VDD display or sleeps (a 5-minute display timeout makes the
   streamed desktop go black even though the VM is healthy).
 
+### 7. Intel Arc driver upgrade (one command)
+
+Driver upgrades are scripted end to end from the host:
+
+```bash
+bash scripts/host/upgrade-intel-driver.sh
+```
+
+It downloads/verifies the pinned Intel package, pushes it to the guest, runs
+`upgrade-intel-driver.ps1` (stops Sunshine, disables VDD, silent install,
+reboots), waits for the RunOnce self-heal, repairs the VDD if it left
+duplicate/error nodes (`rebuild-vdd.ps1`), restarts Sunshine through the
+interactive `SunshineUser` task, runs `verify-stack.sh`, and writes a
+timestamped report under `logs/`. Status-only and rollback variants are
+documented in [docs/driver-upgrade-ops.md](docs/driver-upgrade-ops.md).
+
 ### Encoding: H.264, HEVC or AV1?
 
 The reference config uses:

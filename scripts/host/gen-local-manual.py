@@ -483,6 +483,22 @@ Start-ScheduledTask -TaskName SunshineUser
 由 `C:\\Admin\\scripts\\upgrade-intel-driver.ps1` 一条命令完成，重启后用
 RunOnce 自动续跑。
 
+宿主机一条命令即可完成 下载校验→推送→升级→等重启自愈→修复 VDD→启动
+Sunshine→全量验收→生成报告：
+
+```bash
+bash {repo}/scripts/host/upgrade-intel-driver.sh
+bash {repo}/scripts/host/upgrade-intel-driver.sh --status-only   # 只采集+验收
+```
+
+回滚到本地 WHQL 包（默认 8991 为 Non-WHQL Game On，8974 才是 WHQL）：
+
+```bash
+bash {repo}/scripts/host/upgrade-intel-driver.sh \\
+  -f {repo}/drivers/IntelArcDriver/gfx_win_101.8974.exe \\
+  -e 32.0.101.8974
+```
+
 ### C. SSH 也断了（QGA 仍通）
 
 上面的 QGA `guest-exec` 就是逃生通道，不依赖 Windows 网络栈。
