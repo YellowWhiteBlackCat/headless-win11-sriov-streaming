@@ -71,7 +71,8 @@ fi
 echo "===== 6. VNC rescue display ====="
 mkdir -p "$LOG_DIR"
 video_model=$(virsh -c "$URI" dumpxml "$DOM" 2>/dev/null |
-    sed -n 's/.*<model type='"'"'\([^'"'"']*\)'"'"'.*/\1/p' | head -n 1)
+    sed -n '/<video>/,/<\/video>/p' |
+    sed -n "s/.*type='\([^']*\)'.*/\1/p" | head -n 1)
 if [ -z "$video_model" ] || [ "$video_model" = "none" ]; then
     pass "no video device (VDD-only headless); VNC check skipped"
 else
