@@ -203,18 +203,19 @@ use (see Known limitations).
 ### 6. Local maintenance manual (one command)
 
 The public repository never contains real passwords or machine-specific
-secrets. To get a complete, up-to-date **local** survival manual (plaintext
-passwords, live host/guest state, recovery steps), run on the real host:
+secrets. To get a complete, up-to-date **local** survival manual (live
+host/guest state, credential locations, recovery steps), run on the real host:
 
 ```bash
 python3 scripts/host/gen-local-manual.py
 ```
 
-It reads the git-ignored `secrets/secrets.local.env`, probes the host (VF count,
-networks, domain, guest OS/Sunshine versions over SSH) and writes
+It does not read or copy secret values. It probes the host (VF count, networks,
+domain, guest OS/Sunshine versions over SSH) and writes
 `win11-vm-manual.md` (mode 0600) to your download directory. Override the
-target with `OUTPUT_DIR=/path`. Regenerate it after any password rotation or
-hardware change — it is the "what do I do if the agent is gone" document.
+target with `OUTPUT_DIR=/path`. Regenerate it after hardware or runtime changes
+— it is the "what do I do if the agent is gone" document. Credential lookup
+and rotation remain documented separately in `CREDENTIALS.md`.
 
 ## Guest-side scripts
 
@@ -714,8 +715,8 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   `C:\Admin\config\local-secrets.json` and AutoLogon together.
 - Never commit `secrets/` (passwords + SSH keys), guest
   `local-secrets.json`, `sunshine_state.json` or any binary asset.
-- Run `scripts/host/gen-local-manual.py` to produce the local secret-bearing
-  manual; keep it at mode 0600 and never upload it.
+- Run `scripts/host/gen-local-manual.py` to produce the local maintenance
+  manual. It records credential locations but never reads or embeds their values.
 - On the reference host there is no VNC rescue display (VirtIO video is
   removed); use SSH + QGA. Hosts with VirtIO keep VNC on `127.0.0.1` only.
 - The generic Windows 11 Pro key in `Autounattend.xml` is a public setup key
