@@ -21,9 +21,9 @@
   sudo scripts/host/install-sriov-service.sh 0000:00:02.0 2
   ```
 
-- `gen-local-manual.py` — one-command generator for the local, secret-bearing
-  maintenance manual (real passwords + live host/guest state). Writes
-  `win11-vm-manual.md` (mode 0600) to the user's download directory:
+- `gen-local-manual.py` — one-command generator for the local maintenance
+  manual (credential locations + live host/guest state, never secret values).
+  Writes `win11-vm-manual.md` (mode 0600) to the user's download directory:
 
   ```bash
   python3 scripts/host/gen-local-manual.py

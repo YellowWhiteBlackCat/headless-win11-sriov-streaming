@@ -26,8 +26,8 @@ Linux/libvirt/QEMU/KVM with Intel Arc SR-IOV and Sunshine/Moonlight.
   preflight.
 - `scripts/verify-stack.sh` performs end-to-end VM acceptance checks. Override
   machine values with variables such as `DOM`, `SSH_HOST`, and `EXPECTED_IP`.
-- `python3 scripts/host/gen-local-manual.py` generates the local,
-  secret-bearing maintenance manual; never upload its output.
+- `python3 scripts/host/gen-local-manual.py` generates the local maintenance
+  manual without reading or embedding secret values.
 
 For a deployment, follow `README.md`: create the disk, define/start the domain
 with `virsh`, attach Windows/VirtIO/bootstrap media, then run verification.

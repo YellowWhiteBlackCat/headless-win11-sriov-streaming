@@ -2,9 +2,9 @@
 """Generate the local, human-readable maintenance manual for this VM.
 
 The repository itself is public and must stay sanitized. This script is the
-intended bridge: it reads the git-ignored ``secrets/secrets.local.env`` and live host
-state, then writes a complete plaintext manual (with real passwords) to the
-user's download directory, mode 0600.
+intended bridge: it collects live host state and writes a maintenance manual to
+the user's download directory, mode 0600. The manual identifies credential
+storage locations but never reads, prints, or stores credential values.
 
 Run on the real host:
 
@@ -15,7 +15,7 @@ Environment overrides:
     OUTPUT_DIR=/path/to/dir  python3 scripts/host/gen-local-manual.py
     DOM=win11 SSH_HOST=win-dev URI=qemu:///system
 
-The script never prints secret values.
+The script never reads or prints secret values.
 """
 
 from __future__ import annotations
@@ -25,12 +25,10 @@ import base64
 import os
 import re
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-SECRETS = REPO / "secrets/secrets.local.env"
 
 
 def run(cmd: list[str], timeout: int = 10) -> str:
@@ -71,19 +69,6 @@ def run_ssh_ps(host: str, script: str, timeout: int = 15) -> str:
     """
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     return run_ssh(host, f"powershell -NoProfile -EncodedCommand {encoded}", timeout=timeout)
-
-
-def load_secrets(path: Path) -> dict[str, str]:
-    secrets: dict[str, str] = {}
-    if not path.exists():
-        return secrets
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        secrets[key.strip()] = value.strip().strip('"').strip("'")
-    return secrets
 
 
 def download_dir() -> Path:
@@ -192,10 +177,8 @@ def live_facts() -> dict[str, str]:
     return facts
 
 
-def render(secrets: dict[str, str], facts: dict[str, str], out: Path) -> str:
+def render(facts: dict[str, str], out: Path) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
-    admin_pw = secrets.get("ADMIN_PASSWORD", "MISSING")
-    sunshine_pw = secrets.get("SUNSHINE_WEB_PASSWORD", "MISSING")
     repo = str(REPO)
     data_root = str(REPO.parent)
     ssh_note = ""
@@ -205,9 +188,9 @@ def render(secrets: dict[str, str], facts: dict[str, str], out: Path) -> str:
             "> 真实宿主机上应能直接 `ssh win-dev`；若真机也报 `Bad owner or permissions`，\n"
             "> 检查 `/etc/ssh/ssh_config.d/` 属主并用 `sudo chown -h root:root` 修复。\n"
         )
-    return f"""# WIN11 无头虚拟机 · 人工维护手册（本地机密版）
+    return f"""# WIN11 无头虚拟机 · 人工维护手册（本地运维版）
 
-> ⚠️ 本文件包含明文密码，仅限本机使用。请勿提交到任何仓库、不要外发。
+> 本文件不包含凭据明文；凭据读取、更新和轮换流程见 `{repo}/CREDENTIALS.md`。
 > 生成时间：{now}　|　文件权限：600
 > 重新生成（一键）：`cd {repo} && python3 scripts/host/gen-local-manual.py`
 > 覆盖输出目录：`OUTPUT_DIR=/path python3 scripts/host/gen-local-manual.py`
@@ -224,14 +207,14 @@ ssh win-dev hostname                            # WIN11-NEW
 
 ---
 
-## 1. 账号密码总表
+## 1. 账号与凭据位置
 
-| 用途 | 用户名 | 密码 | 备注 |
+| 用途 | 用户名 | 凭据来源 | 备注 |
 | --- | --- | --- | --- |
-| Windows 本地管理员（SSH / AutoLogon） | `vmadmin` | `{admin_pw}` | SSH、桌面 AutoLogon 共用 |
-| Sunshine Web UI | `sunshine` | `{sunshine_pw}` | 登录 `https://192.168.122.50:47990` |
+| Windows 本地管理员（SSH / AutoLogon） | `vmadmin` | 宿主机受保护的凭据文件 | SSH、桌面 AutoLogon 共用 |
+| Sunshine Web UI | `sunshine` | 宿主机受保护的凭据文件 | 登录 `https://192.168.122.50:47990` |
 
-密码副本存放位置（改密码时必须同步全部）：
+密码副本存放位置（值不写入本手册；改密码时必须同步全部）：
 
 1. 宿主机 `{repo}/secrets/secrets.local.env`（`ADMIN_PASSWORD` / `SUNSHINE_WEB_PASSWORD`）
 2. guest `C:\\Admin\\config\\local-secrets.json`（`adminPassword` / `sunshineWebPassword` / `secondNicMac`）
@@ -373,7 +356,7 @@ virsh -c qemu:///system screenshot win11 ~/win11-check.png
 
 ## 5. Sunshine / Moonlight
 
-- Web UI：`https://192.168.122.50:47990`，账号 `sunshine` / `{sunshine_pw}`
+- Web UI：`https://192.168.122.50:47990`，账号 `sunshine`；密码按第 1 节的位置读取
 - 端口：`47984-48010`（guest 防火墙已放行 TCP/UDP）
 - 已配对客户端：`roth`（本机，无密码；配对证书在 `~/.config/Moonlight Game Streaming Project/`）
 - 流量分工：**Moonlight 控制/视频/音频一律走专用串流网 `192.168.200.2`**；
@@ -616,7 +599,7 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 
 *由 `{repo}/scripts/host/gen-local-manual.py` 于 {now} 生成。仓库 HEAD
 `{facts.get('git_head')}`。*
-*密码/状态变化后：重新运行上面的一键命令即可。*
+*状态变化后：重新运行上面的一键命令即可。密码变化不需要重新生成本手册。*
 """
 
 
@@ -629,21 +612,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    secrets = load_secrets(SECRETS)
-    if "ADMIN_PASSWORD" not in secrets or "SUNSHINE_WEB_PASSWORD" not in secrets:
-        print(
-            f"ERROR: {SECRETS} is missing ADMIN_PASSWORD/SUNSHINE_WEB_PASSWORD.\n"
-            "Copy secrets.local.env.example to secrets/secrets.local.env and fill it in.",
-            file=sys.stderr,
-        )
-        return 1
-
     out_dir = Path(args.output_dir) if args.output_dir else download_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "win11-vm-manual.md"
 
     facts = live_facts()
-    text = render(secrets, facts, out)
+    text = render(facts, out)
     out.write_text(text, encoding="utf-8")
     os.chmod(out, 0o600)
 
