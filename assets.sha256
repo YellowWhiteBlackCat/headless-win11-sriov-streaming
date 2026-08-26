@@ -1,6 +1,6 @@
 # SHA-256 of the downloadable assets referenced by scripts/download-assets.sh.
 # Paths are relative to the repository root.
-55f70b3bf4df43b46f1c776903ded06e6f5acdb73538d005f4443d3043bd6853  drivers/IntelArcDriver/gfx_win_101.8974.exe
+ea230464eb1c58f98d7b379b16369033bf4eeff55af1a8a3b78026adf2bb425d  drivers/IntelArcDriver/gfx_win_101.8991.exe
 a701f2272e9fcf382849b24f913c6dd07597b3b1116525f2e90182f019609154  drivers/VDD.Control.25.7.23.zip
 9227764723f4b011f066a88b36b5a64bf81c9e3fa044356e877820319efe1c58  drivers/MultiMonitorTool/MMT.zip
 b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb  drivers/VBCABLE/VBCABLE_Driver_Pack45.zip

@@ -62,9 +62,9 @@ download() {
 }
 
 # --- Intel Arc Graphics driver (Windows guest) -------------------------------
-INTEL_URL="${INTEL_URL:-https://downloadmirror.intel.com/926177/gfx_win_101.8974.exe}"
-INTEL_SHA="55f70b3bf4df43b46f1c776903ded06e6f5acdb73538d005f4443d3043bd6853"
-INTEL_DEST="$DRIVERS/IntelArcDriver/gfx_win_101.8974.exe"
+INTEL_URL="${INTEL_URL:-https://downloadmirror.intel.com/926884/gfx_win_101.8991.exe}"
+INTEL_SHA="ea230464eb1c58f98d7b379b16369033bf4eeff55af1a8a3b78026adf2bb425d"
+INTEL_DEST="$DRIVERS/IntelArcDriver/gfx_win_101.8991.exe"
 
 if [[ "$SKIP_INTEL" -eq 0 ]]; then
     download "$INTEL_URL" "$INTEL_DEST"

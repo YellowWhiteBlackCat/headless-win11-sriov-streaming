@@ -560,8 +560,11 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 - Windows 26H1 拒绝仅第三方代码签名 CA 的内核驱动（如 VDD 项目 Virtual Audio Driver，
   报 `CM_PROB_UNSIGNED_DRIVER / 0xC0000428`），音频使用签名的 VB-CABLE。
 - CachyOS 不在 Intel GFX SR-IOV 官方验证矩阵（官方为 Ubuntu 24.04.4 + kernel 6.18）。
-- Intel 显卡驱动升级已验证一次（8356 → 8974）：升级后 VDD 必须用 devcon
-  重建（`pnputil /enable-device` 不够），流程见 `upgrade-intel-driver.ps1`。
+- Intel 显卡驱动升级已验证两次（8356 → 8974 → 8991）：升级后 VDD 必须重建。
+  `upgrade-intel-driver.ps1` 会自动做；若出现重复 VDD 节点
+  （`ROOT\DISPLAY\0001`），运行 `rebuild-vdd.ps1`（pnputil 删除全部 VDD 节点
+  后重装唯一一个）。Sunshine 只能由 `SunshineUser` 交互任务启动，从 SSH/
+  服务会话直接启动会因查询显示器被拒绝而看到 0 个显示器。
 - **帧率上限**：官方 Sunshine 的 QSV 写死 `async_depth=1`，3200x2000 下实测
   全管线约 70-80 FPS（HEVC），即便编码器本身可到 ~153 FPS。仓库补丁
   `patches/sunshine-qsv-async-depth.patch` 增加 `qsv_async_depth` 配置项，

@@ -1,5 +1,5 @@
 param(
-    [string]$DriverExe = 'C:\Admin\drivers\IntelArcDriver\gfx_win_101.8974.exe',
+    [string]$DriverExe = 'C:\Admin\drivers\IntelArcDriver\gfx_win_101.8991.exe',
     [switch]$NoReboot,
     [switch]$PostReboot,
     [int]$InstallTimeoutSeconds = 1800

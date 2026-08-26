@@ -578,7 +578,7 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 | GPU (host) | Intel Panther Lake iGPU Arc B390 (`8086:b080`), `xe` driver |
 | SR-IOV VF | `0000:00:02.1` → `xe-vfio-pci`, 1 VF (`sriov_totalvfs=7`) |
 | Guest OS | Windows 11 Pro 26H1, build `28000.1` |
-| Intel guest driver | `32.0.101.8974` |
+| Intel guest driver | `32.0.101.8991` (Non-WHQL Game On, 2026-08-24) |
 | Virtual display | Virtual-Display-Driver `25.7.23` (MttVDD `11.30.4.434`) |
 | Sunshine | `2026.516.143833` (commit `14ffa6f`) |
 | Sunshine patch | `patches/sunshine-qsv-async-depth.patch` (adds `qsv_async_depth`) |
@@ -610,11 +610,17 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   the reference host**; rescue is SSH + QEMU Guest Agent. Hosts that keep
   VirtIO can use `stream-mode.sh on|off`, but must accept the mode-switch
   tradeoff.
-- Intel display driver upgrades were validated once (`32.0.101.8356` →
-  `32.0.101.8974`) using `upgrade-intel-driver.ps1`: disable VDD → install →
-  reboot → recreate VDD with devcon → restart Sunshine. The recreate step is
-  mandatory; `pnputil /enable-device` alone left the VDD in Error on this
-  reference host.
+- Intel display driver upgrades were validated on the reference host
+  (`32.0.101.8356` → `32.0.101.8974` → `32.0.101.8991`) using
+  `upgrade-intel-driver.ps1`: disable VDD → install → reboot → recreate VDD →
+  restart Sunshine. Two post-upgrade lessons:
+  - `devcon remove` can report "no devices removed" and leave a duplicate
+    `ROOT\DISPLAY\0001`; run `rebuild-vdd.ps1` (pnputil-removes every VDD
+    node, then installs exactly one) if the display list is not clean.
+  - Sunshine must be started by the `SunshineUser` interactive task. Launching
+    `Sunshine.exe` from an SSH/service session returns
+    `ERROR_ACCESS_DENIED` while querying display paths and exposes zero
+    displays, even though the interactive desktop has a working output.
 - Stock Sunshine caps QSV at `async_depth=1`. Measured on the reference host
   at 3200x2000: encoder-only throughput is ~153 FPS (HEVC medium,
   `async_depth=4`), but the full capture→convert→encode pipeline sustains only
