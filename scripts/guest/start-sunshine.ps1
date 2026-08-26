@@ -102,10 +102,10 @@ if (-not $arcReady) {
     exit 1
 }
 
-# 3. Mode coordination. stream-display-mode.ps1 owns the display state:
-#    - streaming-mode.flag present -> VDD-only mode; never touch VirtIO here
-#      (re-enabling it would break the "VDD is the only display" contract and
-#      re-trigger the SetDisplayConfig ERROR_GEN_FAILURE issue).
+# 3. Display topology. The reference host runs VDD-only (no VirtIO video
+#    device at all), which keeps Windows' SetDisplayConfig API healthy.
+#    On hosts that still have VirtIO:
+#    - streaming-mode.flag present -> VDD-only mode; never touch VirtIO here.
 #    - flag absent                 -> rescue baseline: ensure VirtIO is OK and
 #      enforce the VirtIO-primary + VDD-secondary topology.
 $streamingFlag = 'C:\Admin\state\streaming-mode.flag'
@@ -113,13 +113,11 @@ $virtio = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
     Where-Object { $_.InstanceId -like 'PCI\VEN_1AF4*' } |
     Select-Object -First 1
 
-if (Test-Path -LiteralPath $streamingFlag) {
+if (-not $virtio) {
+    Write-Log 'No VirtIO GPU device present: VDD-only headless mode (nothing to restore)'
+} elseif (Test-Path -LiteralPath $streamingFlag) {
     Write-Log 'streaming-mode.flag present: keeping VDD-only mode (no rescue restore)'
 } else {
-    if (-not $virtio) {
-        Write-Log 'VirtIO GPU not found; refusing to start Sunshine without the rescue display'
-        exit 1
-    }
     if ($virtio.Status -ne 'OK') {
         try {
             Enable-PnpDevice -InstanceId $virtio.InstanceId -Confirm:$false -ErrorAction Stop | Out-Null

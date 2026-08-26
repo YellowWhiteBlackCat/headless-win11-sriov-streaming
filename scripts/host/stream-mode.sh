@@ -21,14 +21,15 @@ echo "Switching guest to $GUEST_MODE ..."
 ssh -F ~/.ssh/config "$SSH_HOST" \
     "powershell -NoProfile -ExecutionPolicy Bypass -File $GUEST_SCRIPT -Mode $GUEST_MODE"
 
-echo "Waiting for Sunshine (TCP 47989) ..."
+echo "Waiting for Sunshine (TCP 47989 and 47984) ..."
 for _ in $(seq 1 30); do
-    if nc -zvw 2 192.168.200.2 47989 >/dev/null 2>&1; then
-        echo "Sunshine is up."
+    if nc -zvw 2 192.168.200.2 47989 >/dev/null 2>&1 &&
+       nc -zvw 2 192.168.200.2 47984 >/dev/null 2>&1; then
+        echo "Sunshine is up on both required TCP ports."
         exit 0
     fi
     sleep 2
 done
 
-echo "Timed out waiting for Sunshine on 192.168.200.2:47989" >&2
+echo "Timed out waiting for Sunshine on 192.168.200.2:47989 and :47984" >&2
 exit 1

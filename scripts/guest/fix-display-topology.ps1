@@ -64,7 +64,10 @@ $qemu = $monitors | Where-Object {
 } | Select-Object -First 1
 
 if (-not $vdd) { throw 'Could not find the VDD (MTT) monitor in the monitor list' }
-if (-not $qemu) { throw 'Could not find the QEMU/VirtIO monitor in the monitor list' }
+if (-not $qemu) {
+    Write-Log 'No QEMU/VirtIO monitor found: VDD-only headless mode, nothing to fix'
+    return
+}
 
 $vddDevice = $vdd.Name
 $qemuDevice = $qemu.Name
@@ -82,6 +85,16 @@ Start-Sleep -Seconds 2
 Invoke-Mmt @('/SetPrimary', $qemuDevice) | Out-Null
 Start-Sleep -Seconds 2
 
+# Windows 11 24H2 can leave a re-enabled VirtIO DOD adapter present but with
+# no active scanout.  Apply both monitor records in one SetDisplayConfig call;
+# unlike separate /enable and /SetPrimary calls this also recreates the
+# VirtIO output that QEMU VNC needs.  Short monitor IDs remain stable across
+# DISPLAY-number renumbering after a PnP transition.
+$qemuConfig = 'Name={0} Primary=1 BitsPerPixel=32 Width=1280 Height=800 DisplayFlags=0 DisplayFrequency=60 DisplayOrientation=0 PositionX=0 PositionY=0' -f $qemu.'Short Monitor ID'
+$vddConfig = 'Name={0} BitsPerPixel=32 Width=800 Height=600 DisplayFlags=0 DisplayFrequency=30 DisplayOrientation=0 PositionX=1280 PositionY=0' -f $vdd.'Short Monitor ID'
+Invoke-Mmt @('/SetMonitors', "`"$qemuConfig`"", "`"$vddConfig`"") | Out-Null
+Start-Sleep -Seconds 4
+
 # Save the working topology so future boots can restore it deterministically.
 $cfg = Join-Path $logDir 'monitors-topology.cfg'
 Invoke-Mmt @('/SaveConfig', "`"$cfg`"") | Out-Null
@@ -90,6 +103,13 @@ Write-Log "Saved topology to $cfg"
 # Re-enumerate and show the result.
 Invoke-Mmt @('/scomma', "`"$csv`"") | Out-Null
 Start-Sleep -Seconds 3
-Import-Csv -Path $csv | Format-Table -AutoSize | Out-String -Width 260 | Write-Output
+$finalMonitors = Import-Csv -Path $csv
+$finalMonitors | Format-Table -AutoSize | Out-String -Width 260 | Write-Output
+$finalQemu = $finalMonitors | Where-Object { $_.Adapter -match 'VirtIO' } | Select-Object -First 1
+if (-not $finalQemu -or $finalQemu.Active -ne 'Yes' -or $finalQemu.Primary -ne 'Yes') {
+    Write-Log "WARNING: VirtIO rescue output is still not active/primary (Active=$($finalQemu.Active) Primary=$($finalQemu.Primary))"
+} else {
+    Write-Log 'Verified VirtIO rescue output is active and primary'
+}
 
 Write-Log 'Display topology fix finished'

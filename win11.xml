@@ -7,8 +7,8 @@
       <libosinfo:os id="http://microsoft.com/win/11"/>
     </libosinfo:libosinfo>
   </metadata>
-  <memory unit='KiB'>8388608</memory>
-  <currentMemory unit='KiB'>8388608</currentMemory>
+  <memory unit='KiB'>6291456</memory>
+  <currentMemory unit='KiB'>6291456</currentMemory>
   <memoryBacking>
     <source type='memfd'/>
     <access mode='shared'/>
@@ -196,7 +196,7 @@
     </graphics>
     <audio id='1' type='none'/>
     <video>
-      <model type='vga' vram='16384' heads='1' primary='yes'/>
+      <model type='none'/>
     </video>
     <watchdog model='itco' action='reset'/>
     <memballoon model='virtio'/>

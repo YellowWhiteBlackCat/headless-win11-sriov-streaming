@@ -70,20 +70,26 @@ fi
 
 echo "===== 6. VNC rescue display ====="
 mkdir -p "$LOG_DIR"
-# Wake the display first: Windows may have turned off the VirtIO monitor after idle.
-virsh -c "$URI" send-key "$DOM" KEY_SCROLLLOCK >/dev/null 2>&1 || true
-sleep 2
-shot="$LOG_DIR/verify-$(date +%H%M%S).png"
-if virsh -c "$URI" screenshot "$DOM" "$shot" >/dev/null 2>&1; then
-    mean=$(identify -format '%[mean]' "$shot" 2>/dev/null || echo 0)
-    colors=$(identify -format '%k' "$shot" 2>/dev/null || echo 0)
-    if [ "${mean%%.*}" -gt 100 ] && [ "$colors" -gt 10 ]; then
-        pass "VNC screenshot mean=$mean colors=$colors -> $shot"
-    else
-        fail "VNC screenshot looks blank mean=$mean colors=$colors -> $shot"
-    fi
+video_model=$(virsh -c "$URI" dumpxml "$DOM" 2>/dev/null |
+    sed -n 's/.*<model type='"'"'\([^'"'"']*\)'"'"'.*/\1/p' | head -n 1)
+if [ -z "$video_model" ] || [ "$video_model" = "none" ]; then
+    pass "no video device (VDD-only headless); VNC check skipped"
 else
-    fail "virsh screenshot failed"
+    # Wake the display first: Windows may have turned off the VirtIO monitor after idle.
+    virsh -c "$URI" send-key "$DOM" KEY_SCROLLLOCK >/dev/null 2>&1 || true
+    sleep 2
+    shot="$LOG_DIR/verify-$(date +%H%M%S).png"
+    if virsh -c "$URI" screenshot "$DOM" "$shot" >/dev/null 2>&1; then
+        mean=$(identify -format '%[mean]' "$shot" 2>/dev/null || echo 0)
+        colors=$(identify -format '%k' "$shot" 2>/dev/null || echo 0)
+        if [ "${mean%%.*}" -gt 100 ] && [ "$colors" -gt 10 ]; then
+            pass "VNC screenshot mean=$mean colors=$colors -> $shot"
+        else
+            fail "VNC screenshot looks blank mean=$mean colors=$colors -> $shot"
+        fi
+    else
+        fail "virsh screenshot failed"
+    fi
 fi
 
 echo "===== 7. Guest services / displays / QSV ====="
@@ -91,9 +97,8 @@ diag=$("${SSH[@]}" -o BatchMode=yes -o ConnectTimeout=5 "$SSH_HOST" \
     'powershell -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\guest-verify.ps1' 2>/dev/null || true)
 
 if echo "$diag" | grep -q 'DISPLAY OK.*Virtual Display Driver' &&
-   echo "$diag" | grep -q 'DISPLAY OK.*Red Hat VirtIO GPU' &&
    echo "$diag" | grep -q 'DISPLAY OK.*Intel(R) Arc(TM) B390 GPU'; then
-    pass "three display adapters present"
+    pass "display adapters present (VDD + Arc VF; VirtIO optional)"
 else
     fail "display adapter list incomplete: $(echo "$diag" | grep DISPLAY | tr '\n' ';')"
 fi

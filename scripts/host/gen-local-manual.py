@@ -315,13 +315,13 @@ sudo ufw reload
 
 参考常量（脚本内置快照，guest 变更后会自动覆盖上述实测值）：
 
-- 资源：4 vCPU / 8 GiB / 256 GiB；UUID `8353f52b-bbb1-4cfa-b85a-bc2e99175348`
+- 资源：4 vCPU / 6 GiB / 256 GiB；UUID `8353f52b-bbb1-4cfa-b85a-bc2e99175348`
 - 网卡 1：MAC `52:54:00:30:cb:92` → `192.168.122.50/24`
 - 网卡 2：MAC `52:54:00:40:cb:92` → `192.168.200.2/24`
 - 系统盘：`{data_root}/libvirt/win11/win11.qcow2`（vda；安装 ISO 已摘除）
 - 关键服务：QEMU-GA / sshd / SunshineService / Audiosrv（均自动启动）
-- 显示：两种模式——救援模式（VirtIO 1280x800 主屏 + VDD 副屏）、串流模式
-  （仅 VDD 活动并为主屏，2560x1600@90、200% 缩放）；切换见第 5 节
+- 显示：VDD 是唯一显示器（2560x1600@90、200% 缩放）；VirtIO 视频设备已从域中
+  移除（该 Windows 构建只要有 VirtIO 显示路径，`SetDisplayConfig` 就报错）
 - 音频：VB-Audio Virtual Cable（Sunshine 捕获 48kHz 立体声）
 - 全局 UTF-8：ACP/OEMCP=65001（回滚 `restore-utf8.ps1 -Reboot`）
 - 已装应用：Google Chrome、7-Zip、Notepad++、Git、winget、VC++ 2015-2022 (x64)
@@ -384,10 +384,8 @@ virsh -c qemu:///system screenshot win11 ~/win11-check.png
 ```bash
 moonlight list 192.168.200.2
 
-# 1) 先切到串流模式（会短暂重启 Sunshine）
-bash {repo}/scripts/host/stream-mode.sh on
-
-# 2) 窗口化串流（参考目标 16:10 2560x1600 @90Hz，走专用网，200% 缩放）
+# 参考机无需任何模式切换（VDD 是唯一显示器）
+# 窗口化串流（参考目标 16:10 2560x1600 @90Hz，走专用网，200% 缩放）
 moonlight stream --resolution 2560x1600 --fps 90 --display-mode windowed --bitrate 50000 --video-codec auto 192.168.200.2 Desktop
 
 # 可选：全屏 / 显式指定 AV1 或 HEVC
@@ -395,8 +393,9 @@ moonlight stream --resolution 2560x1600 --fps 90 --display-mode fullscreen --vid
 moonlight stream --resolution 2560x1600 --fps 90 --display-mode fullscreen --video-codec HEVC 192.168.200.2 Desktop
 # 3200x2000@165 仍可用，但接近 QSV 上限（见第 8 节）
 
-# 3) 串流结束后恢复救援屏（VirtIO 主屏 + VDD 副屏）
-bash {repo}/scripts/host/stream-mode.sh off
+# 仅在保留 VirtIO 视频设备的主机上需要显式切换：
+# bash {repo}/scripts/host/stream-mode.sh on   # 串流前
+# bash {repo}/scripts/host/stream-mode.sh off  # 串流后恢复
 ```
 
 编码：`encoder=quicksync`，`av1_mode=0 / hevc_mode=0`（按编码器能力自动
@@ -410,12 +409,12 @@ HEVC，2026-08-26 实测连接→断开全流程干净。**帧率上限**：官�
 `qsv_async_depth = 1`**：2026-08-26 实测 25 秒连接后强制断开，Sunshine 日志
 `Session ended` 且进程保持存活；调高到 4 会触发断开时 Hang（勿在生产使用）。
 
-**为什么串流前要先切模式**：VirtIO 显卡活跃时本机 Windows 的
-`SetDisplayConfig` 校验返回 `ERROR_GEN_FAILURE`，Sunshine 无法把 VDD 设为主屏，
-串流会显示“空副屏”（只有壁纸、没有任务栏），看起来不能操作。`OnlyVdd` 在
-PnP 层禁用 VirtIO 显卡后，VDD 成为唯一主屏，显示 API 恢复（Sunshine 日志
-`API is available: true`）。因此**串流模式与 VNC 救援屏互斥**，结束后务必
-`RestoreBoth`。
+**为什么不需要切模式**：本机 Windows 26H1 只要显示数据库里有 VirtIO 路径
+（活跃、PnP 禁用或残留节点都一样），`SetDisplayConfig` 校验就返回
+`ERROR_GEN_FAILURE`，Sunshine 无法把 VDD 设为主屏，串流显示“空副屏”（只有
+壁纸、没有任务栏）。参考机已把 VirtIO 视频设备从域中移除并删除残留节点，
+VDD 成为唯一显示器，显示 API 恢复（Sunshine 日志 `API is available: true`）。
+代价是**没有 VNC 救援屏**，救援走 SSH + QGA。
 
 新增设备配对（地址务必用专用网）：
 
@@ -543,7 +542,7 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 | `{data_root}/iso/Win11.iso` | 重装用 Windows ISO（当前未挂载） |
 | `/var/lib/libvirt/images/virtio-win.iso` | VirtIO/QGA 驱动 ISO（当前未挂载） |
 | guest `C:\\Admin\\scripts\\` | 全部 PowerShell 运维脚本 |
-| guest `C:\\Admin\\scripts\\stream-display-mode.ps1` | 串流/救援模式切换（含 Sunshine 重启） |
+| guest `C:\\Admin\\scripts\\stream-display-mode.ps1` | 仅保留 VirtIO 的主机使用：串流/救援模式切换（含 Sunshine 重启） |
 | guest `C:\\Admin\\config\\local-secrets.json` | guest 侧密码副本 |
 | guest `C:\\VirtualDisplayDriver\\vdd_settings.xml` | VDD 分辨率/刷新率配置（含 3200x2000@165） |
 | guest `C:\\Admin\\VDD` / `C:\\Admin\\VBCABLE` / `C:\\Admin\\tools` | 驱动包与工具（devcon、MultiMonitorTool） |
@@ -572,10 +571,12 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
   日常使用为准。**参考目标为 2560x1600@90 + 200% 缩放**；165Hz@3200x2000
   接近该 VF 的 QSV 极限，稳定满 165 FPS 可能需要降到 2560x1600 或更轻的
   preset。桌面静止时帧率低是 DDAPI 设计行为，不是故障。
-- **显示 API 冲突 / 模式互斥**：VirtIO 显卡活跃时 `SetDisplayConfig` 返回
-  `ERROR_GEN_FAILURE`，Sunshine/MultiMonitorTool 无法把 VDD 设为主屏，串流会
-  显示空副屏。串流模式通过 PnP 禁用 VirtIO 显卡解决，因此串流模式与 VNC
-  救援屏互斥；切换脚本会重启 Sunshine，不要在会话进行中切换。
+- **显示 API 冲突 / 无 VNC**：本机只要显示数据库里有 VirtIO 路径，
+  `SetDisplayConfig` 就返回 `ERROR_GEN_FAILURE`，Sunshine/MultiMonitorTool
+  无法把 VDD 设为主屏，串流显示空副屏。参考机已**永久移除 VirtIO 视频设备**
+  （域 XML `type='none'` + 删除残留 PnP 节点），VDD 是唯一显示器；因此没有
+  VNC 救援屏，救援走 SSH + QGA。保留 VirtIO 的主机才需要
+  `stream-mode.sh on|off`（会重启 Sunshine，勿在会话中切换）。
 - 局域网其他设备串流未验证（需要 ufw/DNAT，见 linux-prerequisites.md §6）。
 - guest 通过 libvirt NAT 上外网默认被 ufw 挡住（`DEFAULT_FORWARD_POLICY="DROP"`）。
 

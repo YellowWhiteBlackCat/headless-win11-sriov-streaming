@@ -11,7 +11,8 @@ Linux host (libvirt/QEMU/KVM)
 ├── SSH ──────────────► Windows OpenSSH (PowerShell, scp, winget, services)
 ├── QEMU Guest Agent ─► virtio-serial channel (guest-ping / guest-exec,
 │                        even when the network stack is down)
-└── VNC/SPICE ────────► VirtIO-GPU rescue display, loopback-only
+└── (no VNC on the reference host: the VirtIO video device is removed;
+     rescue is SSH + QEMU Guest Agent)
 
 Intel Arc SR-IOV VF (rendering + Quick Sync)
 Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
@@ -26,16 +27,16 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
   login, and installs VirtIO drivers, QEMU Guest Agent, OpenSSH, firewall rules
   and the SSH authorized key.
 - SSH is the daily driver. QEMU Guest Agent is the out-of-band channel that
-  still works when Windows has no IP or the display is black. VNC/SPICE is the
-  final rescue display and listens on `127.0.0.1` only.
+  still works when Windows has no IP or the display is black. On the reference
+  host there is **no VNC rescue display**: the VirtIO video device is removed
+  from the domain entirely (see Display stack), so SSH + QEMU Guest Agent are
+  the rescue channels.
 - The streaming display is an IDD virtual display (VDD) bound to the
-  passed-through Intel Arc VF. The VM has two explicit operating modes:
-  **rescue mode** (VirtIO + VDD both active, VirtIO primary) and **streaming
-  mode** (VDD is the only active display). `scripts/host/stream-mode.sh on|off`
-  switches between them explicitly (Sunshine is stopped/restarted around the
-  switch); while streaming, the VirtIO GPU is disabled at the PnP level because
-  an active VirtIO VGA breaks Windows' `SetDisplayConfig` API on this
-  reference host.
+  passed-through Intel Arc VF and is the VM's **only** display. This keeps
+  Windows' `SetDisplayConfig` API healthy (Sunshine logs
+  `API is available: true`) and removes the need for any display-mode
+  switching. The `stream-mode.sh` / `stream-display-mode.ps1` helpers remain
+  only as a fallback for hosts that keep a VirtIO video device.
 
 ## Repository layout
 
@@ -187,7 +188,9 @@ Reference result (2026-08-25): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the VDD topology fix): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the Sunshine scheduled-task/working-directory
 fix): `PASS=14 FAIL=0`. The 6 GiB runtime-lean reference now reports
-`PASS=15 FAIL=0`, including both Sunshine TCP endpoints and the rescue display.
+`PASS=15 FAIL=0`, including both Sunshine TCP endpoints. After removing the
+VirtIO video device entirely (VDD-only display), Sunshine logs
+`API is available: true` and no display-mode switching is needed.
 Live Moonlight sessions at the reference target
 `2560x1600@90` (200% desktop scaling) over the dedicated NIC complete cleanly
 (HEVC QSV, `Session ended` + display-mode revert on disconnect, Sunshine stays
@@ -226,13 +229,14 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
 | `configure-sunshine.ps1` | point Sunshine at the VDD output GUID |
 | `fix-display-topology.ps1` | keep VirtIO + VDD active via MultiMonitorTool |
 | `stream-display-mode.ps1` | switch between streaming mode (`OnlyVdd`) and rescue mode (`RestoreBoth`); stops/restarts Sunshine around the display switch |
+| `sunshine-display-prep.ps1` | automatic Sunshine connect/disconnect display switch; toggles only the VirtIO PnP device |
 | `set-display-scaling.ps1` | set desktop scaling (default 200%) via registry |
 | `install-vb-cable.ps1` | install the signed VB-CABLE virtual audio device |
 | `set-display-extend.ps1` | keep VirtIO + VDD in extended mode |
 | `set-headless-power.ps1` | disable monitor/sleep/hibernate timeouts |
 | `setup-display-logontask.ps1` | re-apply topology at every logon (uses `fix-display-topology.ps1` when MultiMonitorTool is present) |
 | `setup-sunshine-user-task.ps1` | register the `SunshineUser` scheduled task (interactive session, correct `WorkingDirectory`, optional wrapper) |
-| `start-sunshine.ps1` | ordered boot wrapper: restore the no-client VirtIO rescue display, wait for VDD + Arc VF, then start Sunshine and verify both listeners |
+| `start-sunshine.ps1` | ordered boot wrapper: wait for VDD + Arc VF, restore VirtIO only on hosts that have it (reference host is VDD-only), then start Sunshine and verify both listeners |
 | `setup-deadman.ps1` | scheduled VDD-disable fallback after changes |
 | `display-rescue.ps1` | disable VDD + reboot (runs via QGA if needed) |
 | `get-credentials-status.ps1` | audit where credentials live without printing them |
@@ -314,11 +318,13 @@ either.
 ## Display stack
 
 - **VirtIO rescue display** (`Red Hat VirtIO GPU`): present in rescue mode,
-  loopback VNC only, low-resolution fallback. Never set
-  `<video><model type='none'/></video>`. In streaming mode the device is
-  **disabled at the PnP level** so it cannot interfere;
-  `stream-display-mode.ps1 -Mode RestoreBoth` (or `stream-mode.sh off`)
-  re-enables it.
+  loopback VNC only, low-resolution fallback. **Removed on the reference
+  host**: with any VirtIO display path in the Windows display database
+  (active, disabled or stale), `SetDisplayConfig(SDC_VALIDATE |
+  SDC_USE_DATABASE_CURRENT)` fails with `ERROR_GEN_FAILURE` on this Windows
+  26H1 build, which breaks Sunshine's display management. The reference
+  domain therefore uses `<video><model type='none'/></video>` and relies on
+  SSH + QGA for rescue. `stream-mode.sh` exists for hosts that keep VirtIO.
 - **VDD** (`ROOT\DISPLAY\0000`, Virtual-Display-Driver 25.7.23, IDD): one
   virtual monitor, 16:9 (up to 3840x2160) and 16:10 (up to 3200x2000) modes at
   30/60/90/120/144/165 Hz, bound to the guest-side PCI bus of the Intel VF
@@ -331,26 +337,14 @@ either.
   client resolution/refresh is applied),
   `dd_resolution_option=auto`, `dd_refresh_rate_option=auto`,
   `dd_config_revert_on_disconnect=enabled`.
-- **Explicit mode switching**: `scripts/host/stream-mode.sh on` runs
-  `stream-display-mode.ps1 -Mode OnlyVdd` (stops Sunshine, disables the VirtIO
-  GPU at the PnP level, sets 2560x1600@90 + 200% scaling, writes
-  `C:\Admin\state\streaming-mode.flag`, restarts Sunshine). `stream-mode.sh
-  off` runs `RestoreBoth` (clears the flag, re-enables VirtIO, restarts
-  Sunshine). The logon-time topology fix (`fix-display-topology.ps1`) and the
-  boot wrapper (`start-sunshine.ps1`) both respect the flag, so they never
-  fight streaming mode. A former `global_prep_cmd`-based automatic switcher
-  was removed: it ran inside the streaming process and could not stop/restart
-  Sunshine around the PnP display switch (see Known limitations).
-- **Operating modes** (important): with the VirtIO GPU active, Windows'
-  `SetDisplayConfig` validation returns `ERROR_GEN_FAILURE` on this reference
-  host, so Sunshine/`MultiMonitorTool` cannot move the primary display or
-  disable extra monitors. The stream then shows an *empty secondary VDD*
-  (wallpaper only, no taskbar) — the "picture but not operable" failure.
-  `stream-display-mode.ps1 -Mode OnlyVdd` avoids this by disabling the VirtIO
-  GPU at the PnP level first: the VDD becomes the only/primary display and the
-  display API starts working again (Sunshine logs `API is available: true`).
-  Because the switch stops/restarts Sunshine, never run it mid-session; use
-  `scripts/host/stream-mode.sh on` before connecting and `... off` after.
+- **No mode switching on the reference host**: the VDD is the only display, so
+  Sunshine's `ensure_only_display` is a topology no-op and only applies the
+  client resolution/refresh. Verified end-to-end: `API is available: true`,
+  `2560x1600@90` session, clean revert on disconnect.
+- **Fallback for VirtIO hosts**: if you keep a VirtIO video device,
+  `scripts/host/stream-mode.sh on|off` toggles VDD-only streaming vs rescue
+  topology using `stream-display-mode.ps1` (PnP-disable VirtIO; stops/restarts
+  Sunshine around the switch). Do not use it mid-session.
 - **Sunshine launch**: it runs as the interactive `SunshineUser` scheduled
   task (AutoLogon is required for `ddx`). Sunshine resolves
   `assets/shaders/directx/*.hlsl` **relative to its working directory**, so
@@ -377,8 +371,8 @@ either.
   build** (`CM_PROB_UNSIGNED_DRIVER`, error 0xC0000428), so the signed
   VB-CABLE driver is used instead.
 - **Headless power policy**: run `set-headless-power.ps1` once so Windows never
-  turns off the VirtIO rescue display or sleeps (a 5-minute display timeout
-  makes VNC go black even though the VM is healthy).
+  turns off the VDD display or sleeps (a 5-minute display timeout makes the
+  streamed desktop go black even though the VM is healthy).
 
 ### Encoding: H.264, HEVC or AV1?
 
@@ -411,15 +405,14 @@ fallback. Example client flags: `--video-codec AV1` / `HEVC` / `auto`.
 Recommended client command (reference target, windowed):
 
 ```bash
-# first switch the guest into streaming mode:
-bash scripts/host/stream-mode.sh on
-# then stream:
+# no mode switch needed on the reference host (VDD is the only display):
 moonlight stream --resolution 2560x1600 --fps 90 \
   --display-mode windowed --bitrate 50000 --video-codec auto \
   192.168.200.2 Desktop
-# after the session, restore the rescue display:
-bash scripts/host/stream-mode.sh off
 ```
+
+Hosts that keep a VirtIO video device should wrap the same command with
+`scripts/host/stream-mode.sh on` / `... off` (see Display stack).
 
 **Throughput caveat**: stock Sunshine hardcodes `async_depth=1` for every QSV
 encoder (one frame in flight, lowest latency). On this Arc VF that caps the
@@ -590,7 +583,7 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 | OpenSSH (guest) | `9.8.3.0` (Win32-OpenSSH preview) |
 | winget | `1.29.290` |
 | Moonlight (host client) | `6.1.0` |
-| Guest resources | 4 vCPU / 8 GiB / 256 GiB qcow2 |
+| Guest resources | 4 vCPU / 6 GiB / 256 GiB qcow2 |
 
 ### Known limitations
 
@@ -603,16 +596,17 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 - VDD is bound to the **guest-side PCI bus number** of the Intel VF. Any change
   to the QEMU PCI topology can shift that bus and require updating
   `vdd_settings.xml` (see `config/vdd_settings.arc-b390.xml`).
-- **Display API conflict (reference host)**: while the VirtIO VGA is active,
-  Windows `SetDisplayConfig(SDC_VALIDATE | SDC_USE_DATABASE_CURRENT)` fails
-  with `ERROR_GEN_FAILURE`, so neither Sunshine nor MultiMonitorTool can make
-  the VDD primary or disable extra monitors. Streaming then shows an **empty
-  secondary VDD** (wallpaper, no taskbar) — the "picture but not operable"
-  failure. Streaming mode disables the VirtIO GPU at the PnP level, which
-  fixes the API (Sunshine logs `API is available: true`) and makes the VDD the
-  only display. Consequence: **streaming mode and VNC rescue are mutually
-  exclusive**; restore the rescue display with `stream-mode.sh off`. The
-  switch stops/restarts Sunshine, so never toggle it mid-session.
+- **Display API conflict (reference host)**: on Windows 26H1 build 28000.1,
+  any VirtIO display path in the display database — active, PnP-disabled or
+  stale — makes `SetDisplayConfig(SDC_VALIDATE | SDC_USE_DATABASE_CURRENT)`
+  fail with `ERROR_GEN_FAILURE`, which breaks Sunshine/MultiMonitorTool
+  topology management and shows an **empty secondary VDD** (the "picture but
+  not operable" failure). The reference fix is **permanent**: the VirtIO video
+  device is removed from the domain (`<video><model type='none'/>`) and its
+  stale node is deleted from Windows. Consequence: **no VNC rescue display on
+  the reference host**; rescue is SSH + QEMU Guest Agent. Hosts that keep
+  VirtIO can use `stream-mode.sh on|off`, but must accept the mode-switch
+  tradeoff.
 - Intel display driver upgrades were validated once (`32.0.101.8356` →
   `32.0.101.8974`) using `upgrade-intel-driver.ps1`: disable VDD → install →
   reboot → recreate VDD with devcon → restart Sunshine. The recreate step is
@@ -679,7 +673,8 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   `local-secrets.json`, `sunshine_state.json` or any binary asset.
 - Run `scripts/host/gen-local-manual.py` to produce the local secret-bearing
   manual; keep it at mode 0600 and never upload it.
-- VNC listens on `127.0.0.1` only; reach it through an SSH tunnel if remote.
+- On the reference host there is no VNC rescue display (VirtIO video is
+  removed); use SSH + QGA. Hosts with VirtIO keep VNC on `127.0.0.1` only.
 - The generic Windows 11 Pro key in `Autounattend.xml` is a public setup key
   (no activation entitlement). Replace it with your licensed key.
 
@@ -713,16 +708,16 @@ attribution comments that point back to the upstream projects.
 本仓库把“完全无人值守的 Windows 11 + Intel Arc SR-IOV + Sunshine 串流”沉淀成
 可复制的流程：`Autounattend.xml` 跳过全部安装页面，`bootstrap.ps1` 在
 specialize 阶段装好 VirtIO / QGA / OpenSSH / SSH 公钥；日常走 SSH，救援走
-QEMU Guest Agent，最后兜底是仅监听回环的 VNC 救援屏。串流侧用 VDD 虚拟显示
-器绑定 Arc VF，Sunshine 用 Quick Sync 协商 H.264/HEVC/AV1（参考配置
+QEMU Guest Agent（参考机已移除 VirtIO 视频设备，无 VNC 救援屏）。串流侧用
+VDD 虚拟显示器绑定 Arc VF，Sunshine 用 Quick Sync 协商 H.264/HEVC/AV1（参考配置
 `av1_mode = 0` / `hevc_mode = 0`，按编码器能力自动通告）。Sunshine 由 `SunshineUser` 交互式计划任务
 启动，任务必须带 `WorkingDirectory=C:\Program Files\Sunshine`，否则 shader
 编译路径失败并空指针崩溃；`start-sunshine.ps1` 会先等 VDD 和 Arc VF 就绪再
-启动，避免开机顺序竞态。显示栈有“救援模式/串流模式”两个显式状态：
-参考机在 VirtIO 显卡活跃时 Windows 的 `SetDisplayConfig` 会返回
-`ERROR_GEN_FAILURE`，导致 Sunshine 无法把 VDD 设为主屏（串流画面只剩空副屏、
-看起来“不能操作”）；`stream-mode.sh on` 会在 PnP 层禁用 VirtIO 显卡，让 VDD
-成为唯一主屏并恢复显示 API，`stream-mode.sh off` 再恢复救援屏。仓库还带
+启动，避免开机顺序竞态。参考机把 VirtIO 视频设备从域中整体移除（VDD 是唯一
+显示器）：这个 Windows 构建只要显示数据库里有 VirtIO 路径，`SetDisplayConfig`
+就会返回 `ERROR_GEN_FAILURE`，导致串流只剩空副屏、看起来“不能操作”；移除后
+API 恢复（Sunshine 日志 `API is available: true`），不再需要任何模式切换。
+保留 VirtIO 的主机可用 `stream-mode.sh on|off` 做显式切换。仓库还带
 `qsv_async_depth` 补丁（解除 Sunshine 写死
 `async_depth=1` 造成的 3200×2000 下约 70-80 FPS 上限；但参考机生产值保持
 `qsv_async_depth = 1`，调高到 4 会触发客户端断开时 Hang）与 guest 端
@@ -730,7 +725,7 @@ FFmpeg 工具链。
 所有驱动、
 安装包都不入库，通过 `scripts/download-assets.sh` 按 `assets.sha256`
 下载；真实密码与 SSH 密钥由 `secrets.local.env` 等本地文件注入并被
-gitignore。验收脚本 `verify-stack.sh` 共 14 项，参考机全绿。
+gitignore。验收脚本 `verify-stack.sh` 共 15 项，参考机全绿。
 
 ## References
 
