@@ -80,3 +80,19 @@ INTEL_SHA=ea230464eb1c58f98d7b379b16369033bf4eeff55af1a8a3b78026adf2bb425d \
   1000 表示需重启，属正常）。
 - ViGEmBus 未安装时 Sunshine 会打一行非致命 Fatal（仅影响手柄），不影响
   画面串流。
+
+## 休眠状态与一键恢复
+
+技术验证结束后，参考机处于休眠态：两台 VM 关机、
+`b390-sriov.service`（开机创建两个 VF）已禁用、两个 VF 保留未绑定、
+autostart 保持关闭。
+
+随时恢复：
+
+```bash
+bash scripts/host/restore-vm.sh
+```
+
+脚本会按需重建 VF（宿主机重启后 service 已禁用、VF 消失时自动调用
+`sriov-vf-create.sh`）、启动 win11、等待 SSH 与 Sunshine 就绪，最后跑
+`verify-stack.sh`。2026-08-26 已实测：关机 → 一键恢复 → `PASS=15 FAIL=0`。

@@ -393,6 +393,24 @@ interactive `SunshineUser` task, runs `verify-stack.sh`, and writes a
 timestamped report under `logs/`. Status-only and rollback variants are
 documented in [docs/driver-upgrade-ops.md](docs/driver-upgrade-ops.md).
 
+### 8. Resting state and one-command restore
+
+After technical validation (2026-08-26) the reference host was parked in a
+resting state: both VMs are shut off, the boot-time VF creator
+(`b390-sriov.service`) is disabled, and the two VFs are kept (currently
+unbound, one IOMMU group each). Autostart stays disabled.
+
+Bring the streaming VM back at any time:
+
+```bash
+bash scripts/host/restore-vm.sh
+```
+
+It ensures the two VFs exist (creating them with `sriov-vf-create.sh` if the
+host rebooted and the disabled service left none), starts `win11`, waits for
+SSH and Sunshine, and runs `verify-stack.sh` (expect `PASS=15 FAIL=0`). A full
+shutdown → restore rehearsal passed 15/15 on the reference date.
+
 ### Encoding: H.264, HEVC or AV1?
 
 The reference config uses:

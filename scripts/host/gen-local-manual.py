@@ -499,6 +499,18 @@ bash {repo}/scripts/host/upgrade-intel-driver.sh \\
   -e 32.0.101.8974
 ```
 
+### 当前休眠态与一键恢复
+
+技术验证结束后的休眠态：两台 VM 关机、`b390-sriov.service` 已禁用、
+两个 VF 保留未绑定、autostart 关闭。随时恢复（已实测 15/15）：
+
+```bash
+bash {repo}/scripts/host/restore-vm.sh
+```
+
+若宿主机重启导致 VF 消失，脚本会自动用 `sriov-vf-create.sh` 重建；想恢复
+开机自建 VF，可执行 `sudo systemctl enable --now b390-sriov.service`。
+
 ### C. SSH 也断了（QGA 仍通）
 
 上面的 QGA `guest-exec` 就是逃生通道，不依赖 Windows 网络栈。
