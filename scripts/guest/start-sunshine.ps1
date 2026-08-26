@@ -102,37 +102,45 @@ if (-not $arcReady) {
     exit 1
 }
 
-# 3. A reboot or a stale display-mode test must never leave the rescue display
-#    disabled. The no-client baseline is always VirtIO + VDD; the streaming
-#    prep command temporarily disables VirtIO only after a client connects.
+# 3. Mode coordination. stream-display-mode.ps1 owns the display state:
+#    - streaming-mode.flag present -> VDD-only mode; never touch VirtIO here
+#      (re-enabling it would break the "VDD is the only display" contract and
+#      re-trigger the SetDisplayConfig ERROR_GEN_FAILURE issue).
+#    - flag absent                 -> rescue baseline: ensure VirtIO is OK and
+#      enforce the VirtIO-primary + VDD-secondary topology.
+$streamingFlag = 'C:\Admin\state\streaming-mode.flag'
 $virtio = Get-PnpDevice -Class Display -ErrorAction SilentlyContinue |
     Where-Object { $_.InstanceId -like 'PCI\VEN_1AF4*' } |
     Select-Object -First 1
-if (-not $virtio) {
-    Write-Log 'VirtIO GPU not found; refusing to start Sunshine without the rescue display'
-    exit 1
-}
-if ($virtio.Status -ne 'OK') {
-    try {
-        Enable-PnpDevice -InstanceId $virtio.InstanceId -Confirm:$false -ErrorAction Stop | Out-Null
-        Write-Log "VirtIO GPU re-enabled for no-client rescue mode: $($virtio.InstanceId)"
-        Start-Sleep -Seconds 5
-        $virtio = Get-PnpDevice -InstanceId $virtio.InstanceId -ErrorAction SilentlyContinue
-    } catch {
-        Write-Log "Could not re-enable VirtIO rescue GPU: $($_.Exception.Message)"
+
+if (Test-Path -LiteralPath $streamingFlag) {
+    Write-Log 'streaming-mode.flag present: keeping VDD-only mode (no rescue restore)'
+} else {
+    if (-not $virtio) {
+        Write-Log 'VirtIO GPU not found; refusing to start Sunshine without the rescue display'
         exit 1
     }
-}
-if (-not $virtio -or $virtio.Status -ne 'OK') {
-    Write-Log 'VirtIO rescue GPU is not working after the restore attempt'
-    exit 1
-}
-
-$fixScript = 'C:\Admin\scripts\fix-display-topology.ps1'
-if (Test-Path -LiteralPath $fixScript) {
-    Invoke-TopologyFixWithTimeout -Path $fixScript -TimeoutSeconds 30
-} else {
-    Write-Log "fix-display-topology.ps1 missing: $fixScript"
+    if ($virtio.Status -ne 'OK') {
+        try {
+            Enable-PnpDevice -InstanceId $virtio.InstanceId -Confirm:$false -ErrorAction Stop | Out-Null
+            Write-Log "VirtIO GPU re-enabled for rescue mode: $($virtio.InstanceId)"
+            Start-Sleep -Seconds 5
+            $virtio = Get-PnpDevice -InstanceId $virtio.InstanceId -ErrorAction SilentlyContinue
+        } catch {
+            Write-Log "Could not re-enable VirtIO rescue GPU: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+    if (-not $virtio -or $virtio.Status -ne 'OK') {
+        Write-Log 'VirtIO rescue GPU is not working after the restore attempt'
+        exit 1
+    }
+    $fixScript = 'C:\Admin\scripts\fix-display-topology.ps1'
+    if (Test-Path -LiteralPath $fixScript) {
+        Invoke-TopologyFixWithTimeout -Path $fixScript -TimeoutSeconds 30
+    } else {
+        Write-Log "fix-display-topology.ps1 missing: $fixScript"
+    }
 }
 
 # 4. Remove stale instances before starting.

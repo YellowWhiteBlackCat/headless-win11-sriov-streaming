@@ -18,6 +18,16 @@ function Write-Log {
     Write-Output $line
 }
 
+# Streaming mode coordination: stream-display-mode.ps1 -Mode OnlyVdd writes
+# this flag; while it exists, the logon-time topology fix must NOT re-enable
+# the VirtIO rescue display (that would break the "VDD is the only display"
+# contract and re-trigger the SetDisplayConfig ERROR_GEN_FAILURE issue).
+$streamingFlag = 'C:\Admin\state\streaming-mode.flag'
+if (Test-Path -LiteralPath $streamingFlag) {
+    Write-Log "streaming-mode.flag present; skipping rescue topology enforcement"
+    exit 0
+}
+
 if (-not (Test-Path -LiteralPath $ToolPath)) {
     throw "MultiMonitorTool.exe not found at $ToolPath (copy it from drivers/MultiMonitorTool/ to C:\Admin\tools\)"
 }

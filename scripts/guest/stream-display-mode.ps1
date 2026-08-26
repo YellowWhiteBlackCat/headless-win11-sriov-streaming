@@ -11,6 +11,8 @@ $rescueMonitor = 'RHT1234'   # VirtIO rescue display (Short Monitor ID)
 $vddMonitor = 'MTT1337'      # Virtual Display Driver (Short Monitor ID)
 $virtioInstance = 'PCI\VEN_1AF4&DEV_1050&SUBSYS_11001AF4&REV_01\3&11583659&0&08'
 $logDir = 'C:\Admin\logs'
+$stateDir = 'C:\Admin\state'
+$streamingFlag = Join-Path $stateDir 'streaming-mode.flag'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $logFile = Join-Path $logDir 'stream-display-mode.log'
 
@@ -98,13 +100,23 @@ switch ($Mode) {
 
         # 3. 200% desktop scaling on the VDD.
         Invoke-Mmt @('/SetScale', $vddMonitor, '200')
+        # 4. Remember streaming mode so the logon-time topology watchdog
+        #    (fix-display-topology.ps1) does not re-enable the VirtIO GPU.
+        New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
+        Set-Content -LiteralPath $streamingFlag -Value 'OnlyVdd' -Encoding ascii
+        Log "Streaming-mode flag written: $streamingFlag"
         Save-Snapshot 'during'
 
-        # 4. Bring Sunshine back up in the VDD-only state.
+        # 5. Bring Sunshine back up in the VDD-only state.
         Start-ScheduledTask -TaskName 'SunshineUser' -ErrorAction SilentlyContinue
         Log 'SunshineUser task started after display switch'
     }
     'RestoreBoth' {
+        # Clear the streaming-mode flag first so the topology watchdog can
+        # take over rescue mode even if enabling VirtIO below fails.
+        Remove-Item -LiteralPath $streamingFlag -ErrorAction SilentlyContinue
+        Log "Streaming-mode flag cleared: $streamingFlag"
+
         Get-Process Sunshine -ErrorAction SilentlyContinue | Stop-Process -Force
         Log 'Sunshine stopped before display switch'
 

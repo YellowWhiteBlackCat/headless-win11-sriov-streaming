@@ -20,8 +20,10 @@
     The default profile targets services that are not used by this repository:
     local search, printing, Bluetooth, consumer/Xbox services, UPnP, Maps,
     phone integration and Internet Connection Sharing. The aggressive profile
-    additionally targets cache/telemetry/notification services and per-user
-    consumer services; use it only after measuring real memory pressure.
+    additionally targets telemetry/notification services and per-user consumer
+    services; use it only after measuring real memory pressure. SysMain is
+    intentionally left alone because this Windows build re-enables it whenever
+    MemoryCompression is enabled.
 
     Audit is the default. Apply writes a JSON backup before changing anything;
     Rollback restores the saved startup modes and running/stopped state.
@@ -105,7 +107,6 @@ $ConservativePolicies = @(
 # These are deliberately opt-in. They can reduce background activity, but the
 # memory benefit is workload/build dependent and the trade-offs are larger.
 $AggressivePolicies = @(
-    @{ Pattern = 'SysMain';       StartupType = 'Disabled'; Reason = 'Disable Superfetch only after measuring real memory pressure' },
     @{ Pattern = 'DiagTrack';     StartupType = 'Disabled'; Reason = 'No telemetry collection required for this isolated VM' },
     @{ Pattern = 'WpnService';    StartupType = 'Disabled'; Reason = 'No Windows push notifications' },
     @{ Pattern = 'WpnUserService_*';       StartupType = 'Disabled'; Reason = 'No per-user push notifications' },
@@ -759,13 +760,22 @@ function Apply-ServicePolicy {
         try {
             Set-Service -Name $target.Name -StartupType $target.StartupType -ErrorAction Stop
             Write-Log "SET $($target.Name) startup=$($target.StartupType) [$($target.Reason)]"
-
-            if ($target.StartupType -eq 'Disabled' -and $service.Status -eq 'Running') {
-                Stop-Service -Name $target.Name -ErrorAction Stop
-                Write-Log "STOPPED $($target.Name)"
-            }
         } catch {
             Write-Log "WARN $($target.Name) was not fully changed: $($_.Exception.Message)"
+        }
+
+        # Per-user service instances reject Set-Service configuration changes,
+        # but their current process can still be stopped safely. Refresh the
+        # object so a successful startup change and a failed one share the same
+        # stop path.
+        $service = Get-Service -Name $target.Name -ErrorAction SilentlyContinue
+        if ($target.StartupType -eq 'Disabled' -and $service -and $service.Status -eq 'Running') {
+            try {
+                Stop-Service -Name $target.Name -Force -ErrorAction Stop
+                Write-Log "STOPPED $($target.Name)"
+            } catch {
+                Write-Log "WARN $($target.Name) is still running: $($_.Exception.Message)"
+            }
         }
     }
 }

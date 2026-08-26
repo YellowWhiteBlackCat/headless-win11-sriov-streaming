@@ -19,11 +19,6 @@ $configs = @(
     'C:\ProgramData\Sunshine\config\sunshine.conf'
 )
 
-# Sunshine runs the do command when a streaming application/session starts and
-# the undo command after it ends. The helper only switches display visibility;
-# it never stops Sunshine, QEMU-GA or SSH.
-$globalDisplayPrep = '[{"do":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode OnlyVdd","undo":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode RestoreBoth","elevated":true}]'
-
 function Set-ConfValue {
     param(
         [string]$Path,
@@ -53,7 +48,6 @@ foreach ($config in $configs) {
     Set-ConfValue -Path $config -Key 'hevc_mode' -Value $HevcMode
     Set-ConfValue -Path $config -Key 'qsv_preset' -Value $QsvPreset
     Set-ConfValue -Path $config -Key 'qsv_async_depth' -Value $QsvAsyncDepth
-    Set-ConfValue -Path $config -Key 'global_prep_cmd' -Value $globalDisplayPrep
 }
 
 # Prefer the interactive scheduled task (production path); fall back to the

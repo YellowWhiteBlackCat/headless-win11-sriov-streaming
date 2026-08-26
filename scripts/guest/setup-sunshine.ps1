@@ -11,7 +11,6 @@ $srcRoot = 'C:\Admin\Sunshine'
 $destRoot = 'C:\Program Files\Sunshine'
 $configDir = 'C:\ProgramData\Sunshine\config'
 $logDir = 'C:\Admin\logs'
-$globalDisplayPrep = '[{"do":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode OnlyVdd","undo":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode RestoreBoth","elevated":true}]'
 New-Item -ItemType Directory -Force -Path $logDir, $configDir | Out-Null
 $logFile = Join-Path $logDir 'setup-sunshine.log'
 
@@ -66,7 +65,6 @@ foreach ($conf in @((Join-Path $destRoot 'config\sunshine.conf'), (Join-Path $co
     Set-ConfValue -Path $conf -Key 'bind_address' -Value '0.0.0.0'
     Set-ConfValue -Path $conf -Key 'upnp' -Value 'disabled'
     Set-ConfValue -Path $conf -Key 'address_family' -Value 'ipv4'
-    Set-ConfValue -Path $conf -Key 'global_prep_cmd' -Value $globalDisplayPrep
     Log "Configured $conf"
 }
 

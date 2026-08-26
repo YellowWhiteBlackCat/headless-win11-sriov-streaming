@@ -32,9 +32,10 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
   passed-through Intel Arc VF. The VM has two explicit operating modes:
   **rescue mode** (VirtIO + VDD both active, VirtIO primary) and **streaming
   mode** (VDD is the only active display). `scripts/host/stream-mode.sh on|off`
-  switches between them; the VirtIO GPU is disabled at the PnP level while
-  streaming because an active VirtIO VGA breaks Windows' `SetDisplayConfig`
-  API on this reference host (details in Display stack / Known limitations).
+  switches between them explicitly (Sunshine is stopped/restarted around the
+  switch); while streaming, the VirtIO GPU is disabled at the PnP level because
+  an active VirtIO VGA breaks Windows' `SetDisplayConfig` API on this
+  reference host.
 
 ## Repository layout
 
@@ -51,7 +52,7 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
 ├── scripts/
 │   ├── download-assets.sh      # fetch binaries into git-ignored dirs
 │   ├── host/                   # host preflight, VF systemd service, network XML
-│   ├── verify-stack.sh         # 12-point host-side acceptance check
+│   ├── verify-stack.sh         # 15-point host-side acceptance check
 │   └── guest/                  # PowerShell scripts deployed to C:\Admin\scripts
 ├── win11.xml / win11-vf.xml    # libvirt domain examples (edit to your host)
 └── drivers/ apps/winget/ logs/ # git-ignored, populated by download-assets.sh
@@ -185,7 +186,9 @@ ssh -o BatchMode=yes vmadmin@win11 hostname
 Reference result (2026-08-25): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the VDD topology fix): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the Sunshine scheduled-task/working-directory
-fix): `PASS=14 FAIL=0`. Live Moonlight sessions at the reference target
+fix): `PASS=14 FAIL=0`. The 6 GiB runtime-lean reference now reports
+`PASS=15 FAIL=0`, including both Sunshine TCP endpoints and the rescue display.
+Live Moonlight sessions at the reference target
 `2560x1600@90` (200% desktop scaling) over the dedicated NIC complete cleanly
 (HEVC QSV, `Session ended` + display-mode revert on disconnect, Sunshine stays
 alive). The patched `qsv_async_depth` build is installed and runs with
@@ -229,7 +232,7 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
 | `set-headless-power.ps1` | disable monitor/sleep/hibernate timeouts |
 | `setup-display-logontask.ps1` | re-apply topology at every logon (uses `fix-display-topology.ps1` when MultiMonitorTool is present) |
 | `setup-sunshine-user-task.ps1` | register the `SunshineUser` scheduled task (interactive session, correct `WorkingDirectory`, optional wrapper) |
-| `start-sunshine.ps1` | ordered boot wrapper: wait for VDD + Arc VF, enforce topology only in rescue mode (VirtIO present), then start Sunshine from the correct directory |
+| `start-sunshine.ps1` | ordered boot wrapper: restore the no-client VirtIO rescue display, wait for VDD + Arc VF, then start Sunshine and verify both listeners |
 | `setup-deadman.ps1` | scheduled VDD-disable fallback after changes |
 | `display-rescue.ps1` | disable VDD + reboot (runs via QGA if needed) |
 | `get-credentials-status.ps1` | audit where credentials live without printing them |
@@ -281,19 +284,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-ru
 ```
 
 Use `-IncludeAggressive` only after measuring actual pressure. It additionally
-targets SysMain, Microsoft telemetry tasks, push notifications, OneDrive,
-Office/Outlook and consumer per-user services. Add `-RemoveConsumerAppx` to
+targets Microsoft telemetry tasks, push notifications, OneDrive, Office/Outlook
+and consumer per-user services. SysMain is intentionally not disabled on this
+guest because enabling Windows Memory Compression restores that service; the
+script keeps compression enabled instead. Add `-RemoveConsumerAppx` to
 remove the explicit allowlist of Widgets/Web Experience, weather/news, Xbox,
 Teams, Clipchamp and other consumer packages. AppX removal is recorded but is
 not automatically reversible; the WebView2 runtime remains installed.
 `Apply` and `Rollback` require an elevated Administrator PowerShell session.
 Use `-DisableUnusedRemote` only when RDP and WinRM are not needed as fallback
-channels. Revert the service changes with:
+channels. Apply the aggressive profile with:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 `
   -Mode Apply -IncludeAggressive -DisableConsumerStartup -RemoveConsumerAppx
 ```
+
+Revert service/startup/task changes with:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 -Mode Rollback
@@ -309,8 +316,9 @@ either.
 - **VirtIO rescue display** (`Red Hat VirtIO GPU`): present in rescue mode,
   loopback VNC only, low-resolution fallback. Never set
   `<video><model type='none'/></video>`. In streaming mode the device is
-  **disabled at the PnP level** (`Disable-PnpDevice`) so it cannot interfere;
-  `stream-display-mode.ps1 -Mode RestoreBoth` re-enables it.
+  **disabled at the PnP level** so it cannot interfere;
+  `stream-display-mode.ps1 -Mode RestoreBoth` (or `stream-mode.sh off`)
+  re-enables it.
 - **VDD** (`ROOT\DISPLAY\0000`, Virtual-Display-Driver 25.7.23, IDD): one
   virtual monitor, 16:9 (up to 3840x2160) and 16:10 (up to 3200x2000) modes at
   30/60/90/120/144/165 Hz, bound to the guest-side PCI bus of the Intel VF
@@ -323,6 +331,16 @@ either.
   client resolution/refresh is applied),
   `dd_resolution_option=auto`, `dd_refresh_rate_option=auto`,
   `dd_config_revert_on_disconnect=enabled`.
+- **Explicit mode switching**: `scripts/host/stream-mode.sh on` runs
+  `stream-display-mode.ps1 -Mode OnlyVdd` (stops Sunshine, disables the VirtIO
+  GPU at the PnP level, sets 2560x1600@90 + 200% scaling, writes
+  `C:\Admin\state\streaming-mode.flag`, restarts Sunshine). `stream-mode.sh
+  off` runs `RestoreBoth` (clears the flag, re-enables VirtIO, restarts
+  Sunshine). The logon-time topology fix (`fix-display-topology.ps1`) and the
+  boot wrapper (`start-sunshine.ps1`) both respect the flag, so they never
+  fight streaming mode. A former `global_prep_cmd`-based automatic switcher
+  was removed: it ran inside the streaming process and could not stop/restart
+  Sunshine around the PnP display switch (see Known limitations).
 - **Operating modes** (important): with the VirtIO GPU active, Windows'
   `SetDisplayConfig` validation returns `ERROR_GEN_FAILURE` on this reference
   host, so Sunshine/`MultiMonitorTool` cannot move the primary display or
@@ -331,8 +349,8 @@ either.
   `stream-display-mode.ps1 -Mode OnlyVdd` avoids this by disabling the VirtIO
   GPU at the PnP level first: the VDD becomes the only/primary display and the
   display API starts working again (Sunshine logs `API is available: true`).
-  Use `scripts/host/stream-mode.sh on|off` to switch modes; both scripts stop
-  Sunshine around the display switch and restart it afterwards.
+  Because the switch stops/restarts Sunshine, never run it mid-session; use
+  `scripts/host/stream-mode.sh on` before connecting and `... off` after.
 - **Sunshine launch**: it runs as the interactive `SunshineUser` scheduled
   task (AutoLogon is required for `ddx`). Sunshine resolves
   `assets/shaders/directx/*.hlsl` **relative to its working directory**, so
