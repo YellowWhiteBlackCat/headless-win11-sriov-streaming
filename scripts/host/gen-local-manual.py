@@ -542,6 +542,7 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 | `{data_root}/iso/Win11.iso` | 重装用 Windows ISO（当前未挂载） |
 | `/var/lib/libvirt/images/virtio-win.iso` | VirtIO/QGA 驱动 ISO（当前未挂载） |
 | guest `C:\\Admin\\scripts\\` | 全部 PowerShell 运维脚本 |
+| guest `C:\\Admin\\scripts\\disable-modal-prompts.ps1` | 关闭 UAC/SmartScreen/防火墙弹窗（无头 VM 必须） |
 | guest `C:\\Admin\\scripts\\stream-display-mode.ps1` | 仅保留 VirtIO 的主机使用：串流/救援模式切换（含 Sunshine 重启） |
 | guest `C:\\Admin\\config\\local-secrets.json` | guest 侧密码副本 |
 | guest `C:\\VirtualDisplayDriver\\vdd_settings.xml` | VDD 分辨率/刷新率配置（含 3200x2000@165） |

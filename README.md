@@ -234,6 +234,7 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
 | `install-vb-cable.ps1` | install the signed VB-CABLE virtual audio device |
 | `set-display-extend.ps1` | keep VirtIO + VDD in extended mode |
 | `set-headless-power.ps1` | disable monitor/sleep/hibernate timeouts |
+| `disable-modal-prompts.ps1` | headless-VM hardening: auto-elevate UAC, disable SmartScreen and firewall first-run prompts |
 | `setup-display-logontask.ps1` | re-apply topology at every logon (uses `fix-display-topology.ps1` when MultiMonitorTool is present) |
 | `setup-sunshine-user-task.ps1` | register the `SunshineUser` scheduled task (interactive session, correct `WorkingDirectory`, optional wrapper) |
 | `start-sunshine.ps1` | ordered boot wrapper: wait for VDD + Arc VF, restore VirtIO only on hosts that have it (reference host is VDD-only), then start Sunshine and verify both listeners |
