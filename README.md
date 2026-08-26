@@ -56,6 +56,7 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
 │   ├── verify-stack.sh         # 15-point host-side acceptance check
 │   └── guest/                  # PowerShell scripts deployed to C:\Admin\scripts
 ├── win11.xml / win11-vf.xml    # libvirt domain examples (edit to your host)
+├── docs/vm-fidelity.md         # legitimate hardware-fidelity knobs
 └── drivers/ apps/winget/ logs/ # git-ignored, populated by download-assets.sh
 ```
 
@@ -656,10 +657,10 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   exposing this VM beyond your own host.
 - The generic Windows 11 Pro key in `Autounattend.xml` only unlocks Setup; it
   carries no activation entitlement and activation is out of scope.
-- The 4C/8G/256G configuration is the validated setup, not a benchmark or a
+- The 4C/6G/256G configuration is the validated setup, not a benchmark or a
   performance ceiling.
 - `lean-runtime.ps1` can reduce runtime services, but the reference templates
-  keep the validated **4 vCPU / 8 GiB / 256 GiB** configuration; treat a
+  keep the validated **4 vCPU / 6 GiB / 256 GiB** configuration; treat a
   different memory size as your own unvalidated configuration.
 
 ## Security notes

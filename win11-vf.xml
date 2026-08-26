@@ -45,12 +45,17 @@
       <runtime state='on'/>
       <synic state='on'/>
       <stimer state='on'/>
+      <reset state='on'/>
       <frequencies state='on'/>
       <tlbflush state='on'/>
       <ipi state='on'/>
       <evmcs state='on'/>
       <avic state='on'/>
     </hyperv>
+    <kvm>
+      <hint-dedicated state='on'/>
+    </kvm>
+    <msrs unknown='ignore'/>
     <vmport state='off'/>
     <smm state='on'/>
   </features>
