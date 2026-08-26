@@ -1,0 +1,102 @@
+diff --git a/cmake/dependencies/Boost_Sunshine.cmake b/cmake/dependencies/Boost_Sunshine.cmake
+index f0ff9a7..824d192 100644
+--- a/cmake/dependencies/Boost_Sunshine.cmake
++++ b/cmake/dependencies/Boost_Sunshine.cmake
+@@ -3,7 +3,7 @@
+ #
+ include_guard(GLOBAL)
+ 
+-set(BOOST_VERSION "1.89.0")
++set(BOOST_VERSION "1.91.0")
+ set(BOOST_COMPONENTS
+         filesystem
+         log
+@@ -58,7 +58,7 @@ if(NOT Boost_FOUND)
+     # Limit boost to the required libraries only
+     set(BOOST_INCLUDE_LIBRARIES ${BOOST_COMPONENTS})
+     set(BOOST_URL "https://github.com/boostorg/boost/releases/download/boost-${BOOST_VERSION}/boost-${BOOST_VERSION}-cmake.tar.xz")  # cmake-lint: disable=C0301
+-    set(BOOST_HASH "SHA256=67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74")
++    set(BOOST_HASH "SHA256=0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5")
+ 
+     if(CMAKE_VERSION VERSION_LESS "3.24.0")
+         FetchContent_Declare(
+diff --git a/cmake/packaging/windows_wix.cmake b/cmake/packaging/windows_wix.cmake
+index 4a2f4d0..3b75e7f 100644
+--- a/cmake/packaging/windows_wix.cmake
++++ b/cmake/packaging/windows_wix.cmake
+@@ -1,6 +1,12 @@
+ # WIX Packaging
+ # see options at: https://cmake.org/cmake/help/latest/cpack_gen/wix.html
+ 
++option(SUNSHINE_SKIP_WIX "Skip WiX tooling setup (binary-only builds)" OFF)
++if(SUNSHINE_SKIP_WIX)
++    message(STATUS "Skipping WiX packaging setup (SUNSHINE_SKIP_WIX=ON)")
++    return()
++endif()
++
+ # find dotnet
+ find_program(DOTNET_EXECUTABLE dotnet HINTS "C:/Program Files/dotnet")
+ 
+diff --git a/src/config.cpp b/src/config.cpp
+index a79f7d8..d54c8ab 100644
+--- a/src/config.cpp
++++ b/src/config.cpp
+@@ -472,6 +472,7 @@ namespace config {
+       qsv::medium,  // preset
+       qsv::_auto,  // cavlc
+       false,  // slow_hevc
++      1,  // async_depth
+     },  // qsv
+ 
+     {
+@@ -1130,6 +1131,7 @@ namespace config {
+     int_f(vars, "qsv_preset", video.qsv.qsv_preset, qsv::preset_from_view);
+     int_f(vars, "qsv_coder", video.qsv.qsv_cavlc, qsv::coder_from_view);
+     bool_f(vars, "qsv_slow_hevc", video.qsv.qsv_slow_hevc);
++    int_f(vars, "qsv_async_depth", video.qsv.qsv_async_depth);
+ 
+     std::string quality;
+     string_f(vars, "amd_quality", quality);
+diff --git a/src/config.h b/src/config.h
+index eb778a3..404e623 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -58,6 +58,7 @@ namespace config {
+       std::optional<int> qsv_preset;
+       std::optional<int> qsv_cavlc;
+       bool qsv_slow_hevc;
++      int qsv_async_depth = 1;
+     } qsv;
+ 
+     struct {
+diff --git a/src/video.cpp b/src/video.cpp
+index 00af66c..5974654 100644
+--- a/src/video.cpp
++++ b/src/video.cpp
+@@ -632,7 +632,7 @@ namespace video {
+       {
+         {"preset"s, &config::video.qsv.qsv_preset},
+         {"forced_idr"s, 1},
+-        {"async_depth"s, 1},
++        {"async_depth"s, &config::video.qsv.qsv_async_depth},
+         {"low_delay_brc"s, 1},
+         {"low_power"s, 1},
+       },
+@@ -660,7 +660,7 @@ namespace video {
+       {
+         {"preset"s, &config::video.qsv.qsv_preset},
+         {"forced_idr"s, 1},
+-        {"async_depth"s, 1},
++        {"async_depth"s, &config::video.qsv.qsv_async_depth},
+         {"low_delay_brc"s, 1},
+         {"low_power"s, 1},
+         {"recovery_point_sei"s, 0},
+@@ -696,7 +696,7 @@ namespace video {
+         {"preset"s, &config::video.qsv.qsv_preset},
+         {"cavlc"s, &config::video.qsv.qsv_cavlc},
+         {"forced_idr"s, 1},
+-        {"async_depth"s, 1},
++        {"async_depth"s, &config::video.qsv.qsv_async_depth},
+         {"low_delay_brc"s, 1},
+         {"low_power"s, 1},
+         {"recovery_point_sei"s, 0},

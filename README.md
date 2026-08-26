@@ -29,8 +29,12 @@ Virtual Display Driver (IDD) ──► Sunshine ──► Moonlight client
   still works when Windows has no IP or the display is black. VNC/SPICE is the
   final rescue display and listens on `127.0.0.1` only.
 - The streaming display is an IDD virtual display (VDD) bound to the
-  passed-through Intel Arc VF. The VirtIO rescue display is **never disabled**,
-  so `ensure_primary` / VDD display swaps cannot strand you again.
+  passed-through Intel Arc VF. The VM has two explicit operating modes:
+  **rescue mode** (VirtIO + VDD both active, VirtIO primary) and **streaming
+  mode** (VDD is the only active display). `scripts/host/stream-mode.sh on|off`
+  switches between them; the VirtIO GPU is disabled at the PnP level while
+  streaming because an active VirtIO VGA breaks Windows' `SetDisplayConfig`
+  API on this reference host (details in Display stack / Known limitations).
 
 ## Repository layout
 
@@ -180,6 +184,13 @@ ssh -o BatchMode=yes vmadmin@win11 hostname
 
 Reference result (2026-08-25): `PASS=12 FAIL=0`.
 Reference result (2026-08-26, after the VDD topology fix): `PASS=12 FAIL=0`.
+Reference result (2026-08-26, after the Sunshine scheduled-task/working-directory
+fix): `PASS=14 FAIL=0`. Live Moonlight sessions at the reference target
+`2560x1600@90` (200% desktop scaling) over the dedicated NIC complete cleanly
+(HEVC QSV, `Session ended` + display-mode revert on disconnect, Sunshine stays
+alive). The patched `qsv_async_depth` build is installed and runs with
+`qsv_async_depth=1`; sustained high-content FPS numbers are left to real-world
+use (see Known limitations).
 
 ### 6. Local maintenance manual (one command)
 
@@ -211,15 +222,25 @@ Deploy `scripts/guest/*.ps1` to `C:\Admin\scripts\` on the guest:
 | `setup-sunshine.ps1` | copy Sunshine, create service, base config |
 | `configure-sunshine.ps1` | point Sunshine at the VDD output GUID |
 | `fix-display-topology.ps1` | keep VirtIO + VDD active via MultiMonitorTool |
+| `stream-display-mode.ps1` | switch between streaming mode (`OnlyVdd`) and rescue mode (`RestoreBoth`); stops/restarts Sunshine around the display switch |
+| `set-display-scaling.ps1` | set desktop scaling (default 200%) via registry |
 | `install-vb-cable.ps1` | install the signed VB-CABLE virtual audio device |
 | `set-display-extend.ps1` | keep VirtIO + VDD in extended mode |
 | `set-headless-power.ps1` | disable monitor/sleep/hibernate timeouts |
 | `setup-display-logontask.ps1` | re-apply topology at every logon (uses `fix-display-topology.ps1` when MultiMonitorTool is present) |
+| `setup-sunshine-user-task.ps1` | register the `SunshineUser` scheduled task (interactive session, correct `WorkingDirectory`, optional wrapper) |
+| `start-sunshine.ps1` | ordered boot wrapper: wait for VDD + Arc VF, enforce topology only in rescue mode (VirtIO present), then start Sunshine from the correct directory |
 | `setup-deadman.ps1` | scheduled VDD-disable fallback after changes |
 | `display-rescue.ps1` | disable VDD + reboot (runs via QGA if needed) |
 | `get-credentials-status.ps1` | audit where credentials live without printing them |
+| `lean-runtime.ps1` | audit/apply/rollback runtime-service reductions for a video-only VM |
 | `set-utf8.ps1` / `restore-utf8.ps1` | enable / roll back global UTF-8 |
 | `enable-autologon.ps1` / `disable-autologon.ps1` | interactive-session AutoLogon |
+| `install-ffmpeg.ps1` | deploy standalone FFmpeg (BtbN win64-gpl) to `C:\Admin\tools\ffmpeg` and run a QSV smoke test |
+| `bench-qsv.ps1` | measure QSV encode throughput (resolution/fps/codec/preset/async-depth) |
+| `animate-desktop.ps1` | WPF full-rate animation used to stress-test the capture→encode pipeline |
+| `upgrade-intel-driver.ps1` | ordered Intel driver upgrade: stop Sunshine, disable VDD, install, reboot, recreate VDD with devcon, restart Sunshine |
+| `build-sunshine-patched.ps1` / `.sh` | MSYS2 build of the `qsv_async_depth`-patched Sunshine (see `patches/`) |
 
 Copy `drivers/MultiMonitorTool/MultiMonitorTool.exe` from the download step to
 `C:\Admin\tools\MultiMonitorTool.exe` on the guest before running
@@ -227,11 +248,69 @@ Copy `drivers/MultiMonitorTool/MultiMonitorTool.exe` from the download step to
 (`drivers/VBCABLE/vbMmeCable64_win10.*`) to `C:\Admin\VBCABLE\` and run
 `install-vb-cable.ps1` once to give Sunshine an audio endpoint.
 
+### Runtime memory profile
+
+`lean-runtime.ps1` changes selected service startup modes and, with explicit
+flags, removes unused vendor/consumer startup entries, telemetry tasks and
+consumer AppX packages. It never removes the WebView2 runtime, management
+components or VirtIO/Intel/VDD drivers, and it refuses to apply if QGA, SSH,
+SunshineUser or the three display adapters are not healthy. Run the audit first
+from an elevated Windows PowerShell 5.1 session:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 -Mode Audit
+```
+
+The conservative apply profile disables services with no role in this VM, such
+as local search, printing, Bluetooth, UPnP, Maps, phone integration, Xbox and
+Internet Connection Sharing. It saves the original service startup/state in
+`C:\Admin\config\lean-runtime-services.json`:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 -Mode Apply
+```
+
+On the validated guest, Intel Driver & Support Assistant and Intel Graphics
+Software are also unnecessary resident helpers. Add
+`-DisableVendorStartup` to remove the Intel Graphics Software logon entry and
+stop its overlay/PresentMon processes; the Intel display driver, Arc VF,
+QuickSync and VDD remain installed:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 -Mode Apply -DisableVendorStartup
+```
+
+Use `-IncludeAggressive` only after measuring actual pressure. It additionally
+targets SysMain, Microsoft telemetry tasks, push notifications, OneDrive,
+Office/Outlook and consumer per-user services. Add `-RemoveConsumerAppx` to
+remove the explicit allowlist of Widgets/Web Experience, weather/news, Xbox,
+Teams, Clipchamp and other consumer packages. AppX removal is recorded but is
+not automatically reversible; the WebView2 runtime remains installed.
+`Apply` and `Rollback` require an elevated Administrator PowerShell session.
+Use `-DisableUnusedRemote` only when RDP and WinRM are not needed as fallback
+channels. Revert the service changes with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 `
+  -Mode Apply -IncludeAggressive -DisableConsumerStartup -RemoveConsumerAppx
+```
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\lean-runtime.ps1 -Mode Rollback
+```
+
+Judge the result after a reboot and a real 30–60 minute Sunshine session, not
+from the pre-reboot process list. Keep Windows Memory Compression and the
+system-managed page file enabled; the script intentionally does not change
+either.
+
 ## Display stack
 
-- **VirtIO rescue display** (`Red Hat VirtIO GPU`): always present, loopback
-  VNC only, low-resolution fallback. Never set
-  `<video><model type='none'/></video>`.
+- **VirtIO rescue display** (`Red Hat VirtIO GPU`): present in rescue mode,
+  loopback VNC only, low-resolution fallback. Never set
+  `<video><model type='none'/></video>`. In streaming mode the device is
+  **disabled at the PnP level** (`Disable-PnpDevice`) so it cannot interfere;
+  `stream-display-mode.ps1 -Mode RestoreBoth` re-enables it.
 - **VDD** (`ROOT\DISPLAY\0000`, Virtual-Display-Driver 25.7.23, IDD): one
   virtual monitor, 16:9 (up to 3840x2160) and 16:10 (up to 3200x2000) modes at
   30/60/90/120/144/165 Hz, bound to the guest-side PCI bus of the Intel VF
@@ -239,18 +318,41 @@ Copy `drivers/MultiMonitorTool/MultiMonitorTool.exe` from the download step to
 - **Sunshine**: `capture=ddx`, `encoder=quicksync`,
   `adapter_name=Intel(R) Arc(TM) B390 GPU`,
   `output_name=<VDD device_id GUID>`,
-  `dd_configuration_option=ensure_primary`,
+  `dd_configuration_option=ensure_only_display` (in streaming mode the VDD is
+  already the only display, so this is a no-op topology-wise and only the
+  client resolution/refresh is applied),
   `dd_resolution_option=auto`, `dd_refresh_rate_option=auto`,
   `dd_config_revert_on_disconnect=enabled`.
+- **Operating modes** (important): with the VirtIO GPU active, Windows'
+  `SetDisplayConfig` validation returns `ERROR_GEN_FAILURE` on this reference
+  host, so Sunshine/`MultiMonitorTool` cannot move the primary display or
+  disable extra monitors. The stream then shows an *empty secondary VDD*
+  (wallpaper only, no taskbar) — the "picture but not operable" failure.
+  `stream-display-mode.ps1 -Mode OnlyVdd` avoids this by disabling the VirtIO
+  GPU at the PnP level first: the VDD becomes the only/primary display and the
+  display API starts working again (Sunshine logs `API is available: true`).
+  Use `scripts/host/stream-mode.sh on|off` to switch modes; both scripts stop
+  Sunshine around the display switch and restart it afterwards.
+- **Sunshine launch**: it runs as the interactive `SunshineUser` scheduled
+  task (AutoLogon is required for `ddx`). Sunshine resolves
+  `assets/shaders/directx/*.hlsl` **relative to its working directory**, so
+  the task must set `WorkingDirectory=C:\Program Files\Sunshine`. A task
+  without it crashes at startup with `0xC0000005` after logging
+  `Couldn't compile [...] 0x80070003` and `Platform failed to initialize`.
+  `start-sunshine.ps1` additionally waits for VDD + Arc VF before launching,
+  so boot order never depends on Task Scheduler luck.
 - **Topology**: `DisplaySwitch.exe` alone can race and leave one display
   disconnected, which makes Sunshine fail with `Failed to locate an output
   device`. `fix-display-topology.ps1` uses MultiMonitorTool to deterministically
   enable both monitors, place VDD to the right of VirtIO and keep VirtIO
   primary.
 - **Modes**: the VDD settings advertise 16:9 and 16:10 modes from 800x600 up to
-  3840x2160 at 30/60/90/120/144/165 Hz, including the reference client's native
-  **3200x2000 @ 165 Hz**. Sunshine applies the client resolution/refresh on
-  connect (`dd_resolution_option=auto`, `dd_refresh_rate_option=auto`).
+  3840x2160 at 30/60/90/120/144/165 Hz. The reference target is
+  **2560x1600 @ 90 Hz with 200% desktop scaling** (comfortable for a 16:10
+  client and well within the Arc VF's QSV budget). 3200x2000 @ 165 Hz remains
+  available but sits at the encoder's limit (see Known limitations). Sunshine
+  applies the client resolution/refresh on connect (`dd_resolution_option=auto`,
+  `dd_refresh_rate_option=auto`).
 - **Audio**: the guest has **VB-CABLE** installed as its only audio device;
   Sunshine captures `F32 48000 2.0` from `CABLE Input`. The kernel-mode
   `Virtual Audio Driver` from the VDD project is **rejected by this Windows
@@ -262,10 +364,21 @@ Copy `drivers/MultiMonitorTool/MultiMonitorTool.exe` from the download step to
 
 ### Encoding: H.264, HEVC or AV1?
 
-The reference config keeps `hevc_mode = 0` and `av1_mode = 0`. In Sunshine
-these values mean **"advertise HEVC/AV1 based on encoder capabilities"** — the
-documented recommended setting. The client negotiates the actual codec, and the
-reference logs confirm all three Quick Sync encoders are available:
+The reference config uses:
+
+```text
+encoder = quicksync
+av1_mode = 0     # advertise AV1 based on encoder capabilities (recommended)
+hevc_mode = 0    # advertise HEVC based on encoder capabilities (recommended)
+qsv_preset = medium
+```
+
+Sunshine's codec-mode values are: **0 = advertise based on encoder
+capabilities (recommended), 1 = do not advertise, 2 = advertise 8-bit Main,
+3 = additionally advertise 10-bit/HDR**. The reference config keeps the
+recommended `0/0`, so Moonlight can negotiate H.264, HEVC or AV1 depending on
+what the client asks for. The reference logs confirm all three Quick Sync
+encoders are available on the Arc VF:
 
 ```text
 Found H.264 encoder: h264_qsv [quicksync]
@@ -273,9 +386,56 @@ Found HEVC encoder:  hevc_qsv [quicksync]
 Found AV1 encoder:   av1_qsv [quicksync]
 ```
 
-For maximum efficiency on a network where both ends support it, Moonlight will
-prefer AV1; HEVC is the best compatibility/efficiency middle ground; H.264 is
-the fallback. On this stack you do not need to hardcode one codec.
+For maximum efficiency on a network where both ends support it, ask the client
+for AV1; HEVC is the best compatibility/efficiency middle ground; H.264 is the
+fallback. Example client flags: `--video-codec AV1` / `HEVC` / `auto`.
+
+Recommended client command (reference target, windowed):
+
+```bash
+# first switch the guest into streaming mode:
+bash scripts/host/stream-mode.sh on
+# then stream:
+moonlight stream --resolution 2560x1600 --fps 90 \
+  --display-mode windowed --bitrate 50000 --video-codec auto \
+  192.168.200.2 Desktop
+# after the session, restore the rescue display:
+bash scripts/host/stream-mode.sh off
+```
+
+**Throughput caveat**: stock Sunshine hardcodes `async_depth=1` for every QSV
+encoder (one frame in flight, lowest latency). On this Arc VF that caps the
+whole pipeline at roughly 70-80 FPS at 3200x2000 even though the encoder alone
+can do ~153 FPS. `patches/sunshine-qsv-async-depth.patch` adds a
+`qsv_async_depth` config option (default 1) and `build-sunshine-patched.ps1`
+rebuilds Sunshine with it. **Do not raise it blindly**: on the reference
+machine `qsv_async_depth=4` made Sunshine hang on client disconnect
+(`Fatal: Hang detected! Session failed to terminate in 10 seconds.`), so `1`
+is the stable production value. If you experiment with 2/3, always verify a
+real connect→disconnect cycle first. See
+[Known limitations](#validation-scope-and-known-limitations) for measured
+numbers.
+
+### Optional: rebuild Sunshine with `qsv_async_depth`
+
+Stock Sunshine works fine as shipped; rebuild only if you want to tune the
+QSV async depth (or reproduce this repository's build). The reference machine
+keeps `qsv_async_depth=1`, which behaves like stock:
+
+1. Copy the patched source and patch to the guest (`C:\Admin\build\`), or let
+   `build-sunshine-patched.sh` clone the official `v2026.516.143833` tag
+   itself (it needs MSYS2 UCRT64 with the deps listed in the script).
+2. Run `build-sunshine-patched.ps1` as Administrator on the guest. It installs
+   MSYS2 on first run, applies `patches/sunshine-qsv-async-depth.patch`
+   (including `SUNSHINE_SKIP_WIX=ON` and a system-Boost-1.91 compatibility
+   tweak), builds, backs up `C:\Program Files\Sunshine`, swaps the build in and
+   restarts the `SunshineUser` task.
+3. Keep `qsv_async_depth = 1` (`configure-sunshine.ps1 -QsvAsyncDepth 1` does
+   this), then restart the task. Raising it to 2-4 raises the throughput
+   ceiling from ~80 FPS toward the encoder's ~153 FPS at 3200x2000, but on the
+   reference machine 4 caused a teardown hang on client disconnect. Any
+   experimental value must pass a real connect→disconnect test before
+   production use.
 
 ## System-wide UTF-8
 
@@ -331,6 +491,32 @@ If MultiMonitorTool is not installed yet, copy it from the host
 The old `DisplaySwitch /internal → /extended` sequence is a fallback only;
 it has been observed to disconnect VDD on this stack.
 
+**Sunshine crashes immediately (exit code `0xC0000005`), and the log ends
+after `Trying encoder [quicksync]` with earlier
+`Error: Couldn't compile [assets/shaders/directx/...hlsl] [0x80070003]` and
+`Platform failed to initialize`.** The `SunshineUser` scheduled task is
+running Sunshine without its assets directory as the working directory
+(Task Scheduler defaults to `C:\Windows\System32`). Re-register the task with
+`setup-sunshine-user-task.ps1` (it sets `WorkingDirectory=C:\Program Files\Sunshine`
+and optionally routes through the ordered `start-sunshine.ps1` wrapper), then
+restart the task. This was the root cause of the "QSV starts and instantly
+crashes" symptom on the reference host.
+
+**After an Intel driver upgrade the VDD monitor is gone or stuck in Error,
+and `pnputil /enable-device "ROOT\DISPLAY\0000"` does not bring it back.**
+Driver re-enumeration can leave the root device disabled/dropped. Recreate it
+deterministically with devcon, then fix the topology and start Sunshine:
+
+```powershell
+C:\Admin\VDD\devcon.exe install C:\Admin\VDD\MttVDD.inf Root\MttVDD
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Admin\scripts\fix-display-topology.ps1
+Start-ScheduledTask -TaskName SunshineUser
+```
+
+The full ordered sequence (disable VDD → install → reboot → recreate → start)
+is automated by `upgrade-intel-driver.ps1`, which registers a RunOnce
+continuation so a driver upgrade is one command end-to-end.
+
 **Moonlight pairs, the stream starts, but there is no video and Moonlight
 suggests checking UDP 47998/48000.** The video stream is a new inbound UDP
 flow from the guest to the host over the dedicated `sunshine-private` NIC
@@ -381,6 +567,8 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 | Intel guest driver | `32.0.101.8974` |
 | Virtual display | Virtual-Display-Driver `25.7.23` (MttVDD `11.30.4.434`) |
 | Sunshine | `2026.516.143833` (commit `14ffa6f`) |
+| Sunshine patch | `patches/sunshine-qsv-async-depth.patch` (adds `qsv_async_depth`) |
+| FFmpeg (guest) | BtbN `ffmpeg-master-latest-win64-gpl` (N-126264, QSV encoders verified) |
 | OpenSSH (guest) | `9.8.3.0` (Win32-OpenSSH preview) |
 | winget | `1.29.290` |
 | Moonlight (host client) | `6.1.0` |
@@ -397,9 +585,45 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 - VDD is bound to the **guest-side PCI bus number** of the Intel VF. Any change
   to the QEMU PCI topology can shift that bus and require updating
   `vdd_settings.xml` (see `config/vdd_settings.arc-b390.xml`).
-- Intel display driver major upgrades should be done with VDD disabled first
-  (VDD project's own guidance); this exact sequence was not re-validated after
-  a driver upgrade.
+- **Display API conflict (reference host)**: while the VirtIO VGA is active,
+  Windows `SetDisplayConfig(SDC_VALIDATE | SDC_USE_DATABASE_CURRENT)` fails
+  with `ERROR_GEN_FAILURE`, so neither Sunshine nor MultiMonitorTool can make
+  the VDD primary or disable extra monitors. Streaming then shows an **empty
+  secondary VDD** (wallpaper, no taskbar) — the "picture but not operable"
+  failure. Streaming mode disables the VirtIO GPU at the PnP level, which
+  fixes the API (Sunshine logs `API is available: true`) and makes the VDD the
+  only display. Consequence: **streaming mode and VNC rescue are mutually
+  exclusive**; restore the rescue display with `stream-mode.sh off`. The
+  switch stops/restarts Sunshine, so never toggle it mid-session.
+- Intel display driver upgrades were validated once (`32.0.101.8356` →
+  `32.0.101.8974`) using `upgrade-intel-driver.ps1`: disable VDD → install →
+  reboot → recreate VDD with devcon → restart Sunshine. The recreate step is
+  mandatory; `pnputil /enable-device` alone left the VDD in Error on this
+  reference host.
+- Stock Sunshine caps QSV at `async_depth=1`. Measured on the reference host
+  at 3200x2000: encoder-only throughput is ~153 FPS (HEVC medium,
+  `async_depth=4`), but the full capture→convert→encode pipeline sustains only
+  ~70-80 FPS with the stock `async_depth=1`. The repository patch makes the
+  depth configurable; the reference guest now runs the patched build with
+  `qsv_async_depth = 1` (same behavior as stock) and a short connect→disconnect
+  test ended cleanly (`Session ended`, process stayed alive). Raising the
+  depth to 4 on this reference host caused Sunshine to hang on client
+  disconnect (`Fatal: Hang detected! Session failed to terminate in
+  10 seconds.`) and exit, so 2/3/4 remain experimental: verify a real
+  connect→disconnect cycle before using them. We stopped short of a scripted
+  full-rate stress benchmark, so treat the real-world sustained FPS as
+  pipeline-limited (~70-80 FPS at depth 1) until you measure it in your own
+  workload.
+- The reference target is **2560x1600 @ 90 Hz with 200% desktop scaling**;
+  it is comfortably within the Arc VF's QSV budget. 3200x2000 @ 165 Hz is at
+  the edge of what the encoder can do (the encoder alone measured ~153 FPS at
+  that resolution/preset with `async_depth=4`), so use it only if you accept a
+  possible ceiling below 165 FPS or a lighter QSV preset.
+- Desktop Duplication only delivers frames when the desktop content changes.
+  An idle/static desktop therefore streams at a low frame rate by design
+  (observed ~30-40 FPS at 3200x2000 with nothing moving); this is not a
+  regression. Moving content, video or games drive the rate up to the
+  pipeline/encoder ceiling.
 - Global UTF-8 can misrender legacy GBK-only applications and old text files;
   the rollback path is `restore-utf8.ps1 -Reboot`.
 - The VDD project's kernel-mode Virtual Audio Driver is rejected by this
@@ -421,6 +645,9 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   carries no activation entitlement and activation is out of scope.
 - The 4C/8G/256G configuration is the validated setup, not a benchmark or a
   performance ceiling.
+- `lean-runtime.ps1` can reduce runtime services, but the reference templates
+  keep the validated **4 vCPU / 8 GiB / 256 GiB** configuration; treat a
+  different memory size as your own unvalidated configuration.
 
 ## Security notes
 
@@ -469,10 +696,23 @@ attribution comments that point back to the upstream projects.
 可复制的流程：`Autounattend.xml` 跳过全部安装页面，`bootstrap.ps1` 在
 specialize 阶段装好 VirtIO / QGA / OpenSSH / SSH 公钥；日常走 SSH，救援走
 QEMU Guest Agent，最后兜底是仅监听回环的 VNC 救援屏。串流侧用 VDD 虚拟显示
-器绑定 Arc VF，Sunshine 用 Quick Sync 自动协商 H.264/HEVC/AV1。所有驱动、
+器绑定 Arc VF，Sunshine 用 Quick Sync 协商 H.264/HEVC/AV1（参考配置
+`av1_mode = 0` / `hevc_mode = 0`，按编码器能力自动通告）。Sunshine 由 `SunshineUser` 交互式计划任务
+启动，任务必须带 `WorkingDirectory=C:\Program Files\Sunshine`，否则 shader
+编译路径失败并空指针崩溃；`start-sunshine.ps1` 会先等 VDD 和 Arc VF 就绪再
+启动，避免开机顺序竞态。显示栈有“救援模式/串流模式”两个显式状态：
+参考机在 VirtIO 显卡活跃时 Windows 的 `SetDisplayConfig` 会返回
+`ERROR_GEN_FAILURE`，导致 Sunshine 无法把 VDD 设为主屏（串流画面只剩空副屏、
+看起来“不能操作”）；`stream-mode.sh on` 会在 PnP 层禁用 VirtIO 显卡，让 VDD
+成为唯一主屏并恢复显示 API，`stream-mode.sh off` 再恢复救援屏。仓库还带
+`qsv_async_depth` 补丁（解除 Sunshine 写死
+`async_depth=1` 造成的 3200×2000 下约 70-80 FPS 上限；但参考机生产值保持
+`qsv_async_depth = 1`，调高到 4 会触发客户端断开时 Hang）与 guest 端
+FFmpeg 工具链。
+所有驱动、
 安装包都不入库，通过 `scripts/download-assets.sh` 按 `assets.sha256`
 下载；真实密码与 SSH 密钥由 `secrets.local.env` 等本地文件注入并被
-gitignore。验收脚本 `verify-stack.sh` 共 12 项，参考机全绿。
+gitignore。验收脚本 `verify-stack.sh` 共 14 项，参考机全绿。
 
 ## References
 

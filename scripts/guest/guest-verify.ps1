@@ -15,10 +15,37 @@ foreach ($name in 'QEMU-GA','sshd','SunshineService') {
     }
 }
 
+Write-Output '===== SUNSHINE LAUNCHER ====='
+$task = Get-ScheduledTask -TaskName 'SunshineUser' -ErrorAction SilentlyContinue
+if ($task) {
+    $proc = Get-Process -Name sunshine -ErrorAction SilentlyContinue
+    $info = Get-ScheduledTaskInfo -TaskName 'SunshineUser' -ErrorAction SilentlyContinue
+    Write-Output ("TASK {0}`t{1}`tLastResult=0x{2:X}`tPID={3}" -f `
+        $task.State, $task.Actions[0].WorkingDirectory, $info.LastTaskResult, `
+        ($(if ($proc) { $proc.Id -join ',' } else { 'none' })))
+} else {
+    Write-Output 'TASK MISSING SunshineUser'
+}
+
+Write-Output '===== SUNSHINE LISTENERS ====='
+$sunshineListeners = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue)
+foreach ($port in 47989, 47984) {
+    if ($sunshineListeners | Where-Object { $_.LocalPort -eq $port }) {
+        Write-Output ("LISTENER OK`t{0}" -f $port)
+    } else {
+        Write-Output ("LISTENER MISSING`t{0}" -f $port)
+    }
+}
+
 Write-Output '===== QSV ====='
-$log = Get-Content -Path 'C:\Program Files\Sunshine\config\sunshine.log' -Tail 100 -Encoding UTF8 -ErrorAction SilentlyContinue
+$logFile = 'C:\Program Files\Sunshine\config\sunshine.log'
 foreach ($enc in 'h264_qsv','hevc_qsv','av1_qsv') {
-    if ($log -match $enc) {
+    $found = $null
+    if (Test-Path -LiteralPath $logFile) {
+        $found = Select-String -LiteralPath $logFile -Pattern ("Found .* encoder: {0}" -f $enc) -SimpleMatch:$false -ErrorAction SilentlyContinue |
+            Select-Object -Last 1
+    }
+    if ($found) {
         Write-Output ("QSV OK {0}" -f $enc)
     } else {
         Write-Output ("QSV MISSING {0}" -f $enc)

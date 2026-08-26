@@ -31,6 +31,13 @@
       "note": "开发/脚本版本管理"
     },
     {
+      "id": "Microsoft.VCRedist.2015+.x64",
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+      "category": "runtime",
+      "required": true,
+      "note": "Sunshine / FFmpeg 等原生组件依赖的 VC++ 运行库"
+    },
+    {
       "id": "VideoLAN.VLC",
       "name": "VLC media player",
       "category": "media",

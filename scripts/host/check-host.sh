@@ -112,10 +112,15 @@ done
 
 echo "===== 7. Guest reachability ====="
 # Windows guests commonly block ICMP echo; TCP reachability is the real check.
-if nc -zvw 3 192.168.122.50 47989 >/dev/null 2>&1; then
-    pass "Sunshine TCP 47989 reachable"
+if nc -zvw 3 192.168.200.2 47989 >/dev/null 2>&1; then
+    pass "Sunshine TCP 47989 reachable (dedicated streaming NIC)"
 else
-    fail "Sunshine TCP 47989 unreachable"
+    fail "Sunshine TCP 47989 unreachable on 192.168.200.2"
+fi
+if nc -zvw 3 192.168.122.50 47989 >/dev/null 2>&1; then
+    pass "Sunshine TCP 47989 reachable (management NIC)"
+else
+    fail "Sunshine TCP 47989 unreachable on 192.168.122.50"
 fi
 if ssh -o BatchMode=yes -o ConnectTimeout=5 "$SSH_HOST" hostname >/dev/null 2>&1; then
     pass "SSH $SSH_HOST"

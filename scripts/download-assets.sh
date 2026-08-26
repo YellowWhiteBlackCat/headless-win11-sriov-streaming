@@ -35,7 +35,7 @@ for arg in "$@"; do
     esac
 done
 
-mkdir -p "$DRIVERS/IntelArcDriver" "$DRIVERS/openssh" "$DRIVERS/Sunshine" "$WINGET" "$DRIVERS/MultiMonitorTool" "$DRIVERS/VBCABLE"
+mkdir -p "$DRIVERS/IntelArcDriver" "$DRIVERS/openssh" "$DRIVERS/Sunshine" "$WINGET" "$DRIVERS/MultiMonitorTool" "$DRIVERS/VBCABLE" "$DRIVERS/FFmpeg"
 
 verify_sha() {
     local file="$1" expected="$2"
@@ -159,6 +159,23 @@ if [[ ! -f "$DRIVERS/Sunshine/sunshine.exe" ]]; then
     rm -rf "$tmp"
 else
     echo "exists: $DRIVERS/Sunshine (already extracted)"
+fi
+
+# --- FFmpeg for Windows (guest-side QSV diagnostics / validation) ------------
+# BtbN win64-gpl build: fully static, exposes h264_qsv/hevc_qsv/av1_qsv.
+# The guest install script install-ffmpeg.ps1 deploys bin/ to C:\Admin\tools\ffmpeg.
+FFMPEG_URL="${FFMPEG_URL:-https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip}"
+FFMPEG_SHA="4a1c40d39aac7a424feede61d8a658ad50eac54960427def1e26952f01859e16"
+FFMPEG_ZIP="$DRIVERS/FFmpeg/ffmpeg-win64-gpl.zip"
+
+if [[ ! -d "$DRIVERS/FFmpeg/ffmpeg-x" ]]; then
+    download "$FFMPEG_URL" "$FFMPEG_ZIP"
+    verify_sha "$FFMPEG_ZIP" "$FFMPEG_SHA"
+    echo "extracting $FFMPEG_ZIP -> $DRIVERS/FFmpeg/ffmpeg-x/"
+    mkdir -p "$DRIVERS/FFmpeg/ffmpeg-x"
+    unzip -q -o "$FFMPEG_ZIP" -d "$DRIVERS/FFmpeg/ffmpeg-x/"
+else
+    echo "exists: $DRIVERS/FFmpeg/ffmpeg-x (already extracted)"
 fi
 
 # --- virtio-win (optional, large) ---------------------------------------------

@@ -21,7 +21,7 @@ networks, firewall notes, storage and verification.
 | VF persistence | systemd oneshot `b390-sriov.service` |
 | Firewall | `ufw` installed and enabled |
 | Guest OS | Windows 11 Pro 26H1, build `28000.1` |
-| Guest resources | 4 vCPU / 8 GiB / 256 GiB disk |
+| Guest resources | 4 vCPU / 6 GiB runtime-lean target (original validation used 8 GiB) / 256 GiB disk |
 | Moonlight (host client) | `6.1.0` |
 
 > Intel's GFX SR-IOV Toolkit officially lists Ubuntu 24.04.4 + kernel 6.18 in
@@ -309,3 +309,10 @@ drivers and Sunshine on media prepared by `scripts/download-assets.sh`.
 - A local VNC/SPICE viewer (`virt-viewer`) for the rescue display.
 - `guestfs-tools` if you want to inspect/modify the qcow2 image offline.
 - A Moonlight client (Linux/Windows/Android/iOS) on the streaming side.
+
+On the reference host, Moonlight (`moonlight-qt`, 6.1.0) decodes with VAAPI
+on the same Intel Arc GPU, so install the client plus `intel-media-driver`
+(or `libva-intel-driver` on older stacks). Verify with
+`vainfo | grep -E 'HEVC|AV1'` — if the client reports "no valid hardware
+decoder", the VA-API driver is missing, not the stream. The client also needs
+the host's ufw rule for UDP `47998-48010` on `virbr1` (section 6).

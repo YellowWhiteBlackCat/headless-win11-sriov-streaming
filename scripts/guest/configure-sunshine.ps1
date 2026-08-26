@@ -1,6 +1,10 @@
 param(
     [string]$OutputName = '',
-    [string]$DdOption = 'ensure_active'
+    [string]$DdOption = 'ensure_only_display',
+    [int]$Av1Mode = 0,
+    [int]$HevcMode = 0,
+    [string]$QsvPreset = 'medium',
+    [int]$QsvAsyncDepth = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +18,11 @@ $configs = @(
     'C:\Program Files\Sunshine\config\sunshine.conf',
     'C:\ProgramData\Sunshine\config\sunshine.conf'
 )
+
+# Sunshine runs the do command when a streaming application/session starts and
+# the undo command after it ends. The helper only switches display visibility;
+# it never stops Sunshine, QEMU-GA or SSH.
+$globalDisplayPrep = '[{"do":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode OnlyVdd","undo":"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Admin/scripts/sunshine-display-prep.ps1 -Mode RestoreBoth","elevated":true}]'
 
 function Set-ConfValue {
     param(
@@ -40,11 +49,23 @@ foreach ($config in $configs) {
     Set-ConfValue -Path $config -Key 'dd_refresh_rate_option' -Value 'auto'
     Set-ConfValue -Path $config -Key 'dd_config_revert_on_disconnect' -Value 'enabled'
     Set-ConfValue -Path $config -Key 'dd_config_revert_delay' -Value '1500'
+    Set-ConfValue -Path $config -Key 'av1_mode' -Value $Av1Mode
+    Set-ConfValue -Path $config -Key 'hevc_mode' -Value $HevcMode
+    Set-ConfValue -Path $config -Key 'qsv_preset' -Value $QsvPreset
+    Set-ConfValue -Path $config -Key 'qsv_async_depth' -Value $QsvAsyncDepth
+    Set-ConfValue -Path $config -Key 'global_prep_cmd' -Value $globalDisplayPrep
 }
 
-Write-Output 'Restarting SunshineService'
-Restart-Service -Name 'SunshineService' -Force -ErrorAction Continue
-Start-Sleep -Seconds 8
-Get-Service -Name 'SunshineService' -ErrorAction SilentlyContinue |
-    Format-Table Status, StartType, Name, DisplayName -AutoSize |
-    Out-String | Write-Output
+# Prefer the interactive scheduled task (production path); fall back to the
+# legacy service if the task is not registered.
+$task = Get-ScheduledTask -TaskName 'SunshineUser' -ErrorAction SilentlyContinue
+if ($task) {
+    Write-Output 'Restarting SunshineUser scheduled task'
+    Stop-ScheduledTask -TaskName 'SunshineUser' -ErrorAction SilentlyContinue
+    Get-Process -Name sunshine -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 3
+    Start-ScheduledTask -TaskName 'SunshineUser'
+} else {
+    Write-Output 'Restarting SunshineService (legacy path)'
+    Restart-Service -Name 'SunshineService' -Force -ErrorAction Continue
+}

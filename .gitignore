@@ -26,6 +26,10 @@ apps/winget/
 logs/
 images/
 isos/
+.build/
+.debug/
+__pycache__/
+*.pyc
 
 # Local secrets and identity material
 admin_ed25519.pub

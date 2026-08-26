@@ -21,6 +21,7 @@ The script never prints secret values.
 from __future__ import annotations
 
 import argparse
+import base64
 import os
 import re
 import subprocess
@@ -59,6 +60,17 @@ def run_ssh(host: str, remote_cmd: str, timeout: int = 10) -> str:
     if cfg.exists():
         base += ["-F", str(cfg)]
     return run(base + [host, remote_cmd], timeout=timeout)
+
+
+def run_ssh_ps(host: str, script: str, timeout: int = 15) -> str:
+    """Run a PowerShell script through the remote cmd wrapper reliably.
+
+    Windows OpenSSH feeds the command to cmd.exe by default, so pipes,
+    braces and `$_` in a plain argument get mangled. -EncodedCommand keeps the
+    script byte-for-byte intact regardless of the local shell.
+    """
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    return run_ssh(host, f"powershell -NoProfile -EncodedCommand {encoded}", timeout=timeout)
 
 
 def load_secrets(path: Path) -> dict[str, str]:
@@ -146,18 +158,31 @@ def live_facts() -> dict[str, str]:
     # Guest (best-effort)
     ssh_host = os.environ.get("SSH_HOST", "win-dev")
     facts["guest_hostname"] = run_ssh(ssh_host, "hostname")
-    guest_os = run_ssh(
+    guest_os = run_ssh_ps(
         ssh_host,
-        "powershell -NoProfile -Command (Get-CimInstance Win32_OperatingSystem).Caption + ' build ' + (Get-CimInstance Win32_OperatingSystem).Version",
-        timeout=15,
+        "(Get-CimInstance Win32_OperatingSystem).Caption + ' build ' + (Get-CimInstance Win32_OperatingSystem).Version",
     )
     facts["guest_os"] = guest_os or "unknown"
-    guest_sun = run_ssh(
+    guest_sun = run_ssh_ps(
         ssh_host,
-        "powershell -NoProfile -Command (Get-Item 'C:\\Program Files\\Sunshine\\sunshine.exe').VersionInfo.FileVersion",
-        timeout=15,
+        "(Get-Item 'C:\\Program Files\\Sunshine\\sunshine.exe').VersionInfo.FileVersion",
     )
     facts["guest_sunshine"] = guest_sun or "unknown"
+    guest_driver = run_ssh_ps(
+        ssh_host,
+        "(Get-CimInstance Win32_VideoController -Filter \"Name LIKE '%Arc%'\" | Select-Object -First 1).DriverVersion",
+    )
+    facts["guest_driver"] = guest_driver or "unknown"
+    guest_vdd = run_ssh_ps(
+        ssh_host,
+        "(Get-PnpDevice -InstanceId 'ROOT\\DISPLAY\\0000' -ErrorAction SilentlyContinue).Status",
+    )
+    facts["guest_vdd"] = guest_vdd or "unknown"
+    guest_sunshine_task = run_ssh_ps(
+        ssh_host,
+        "$i = Get-ScheduledTaskInfo -TaskName SunshineUser -ErrorAction SilentlyContinue; if ($i) { ('LastRun=' + $i.LastRunTime + ' Result=0x{0:X}' -f $i.LastTaskResult) } else { 'task missing' }",
+    )
+    facts["guest_sunshine_task"] = guest_sunshine_task or "unknown"
     moonlight = run(["moonlight", "-v"])
     facts["moonlight"] = moonlight.splitlines()[-1] if moonlight else "unknown"
 
@@ -270,7 +295,10 @@ sudo ufw reload
 | --- | --- |
 | 主机名 | `{facts.get('guest_hostname') or 'unknown'}` |
 | 系统 | `{facts.get('guest_os')}` |
+| Intel Arc 驱动 | `{facts.get('guest_driver')}` |
 | Sunshine | `{facts.get('guest_sunshine')}` |
+| Sunshine 任务 | `{facts.get('guest_sunshine_task')}` |
+| VDD 设备状态 | `{facts.get('guest_vdd')}` |
 | Moonlight（宿主客户端） | `{facts.get('moonlight')}` |
 | 域状态 | `{facts.get('dom_state')}` |
 
@@ -292,10 +320,11 @@ sudo ufw reload
 - 网卡 2：MAC `52:54:00:40:cb:92` → `192.168.200.2/24`
 - 系统盘：`{data_root}/libvirt/win11/win11.qcow2`（vda；安装 ISO 已摘除）
 - 关键服务：QEMU-GA / sshd / SunshineService / Audiosrv（均自动启动）
-- 显示：VirtIO 救援屏（1280x800）+ VDD（最高 3200x2000@165）+ Intel Arc B390 VF
+- 显示：两种模式——救援模式（VirtIO 1280x800 主屏 + VDD 副屏）、串流模式
+  （仅 VDD 活动并为主屏，2560x1600@90、200% 缩放）；切换见第 5 节
 - 音频：VB-Audio Virtual Cable（Sunshine 捕获 48kHz 立体声）
 - 全局 UTF-8：ACP/OEMCP=65001（回滚 `restore-utf8.ps1 -Reboot`）
-- 已装应用：Google Chrome、7-Zip、Notepad++、Git、winget
+- 已装应用：Google Chrome、7-Zip、Notepad++、Git、winget、VC++ 2015-2022 (x64)
 
 ---
 
@@ -346,32 +375,60 @@ virsh -c qemu:///system screenshot win11 ~/win11-check.png
 
 - Web UI：`https://192.168.122.50:47990`，账号 `sunshine` / `{sunshine_pw}`
 - 端口：`47984-48010`（guest 防火墙已放行 TCP/UDP）
-- 已配对客户端：`roth`（本机）
-- 流量分工：控制/视频/音频走专用串流网 `192.168.200.2`；管理网 `192.168.122.50`
-  只负责 SSH / Web UI / QGA。宿主机 ufw 必须放行 virbr1 的 UDP `47998-48010`
-  （见第 2 节），否则视频包会被 INPUT DROP 静默丢弃。
+- 已配对客户端：`roth`（本机，无密码；配对证书在 `~/.config/Moonlight Game Streaming Project/`）
+- 流量分工：**Moonlight 控制/视频/音频一律走专用串流网 `192.168.200.2`**；
+  管理网 `192.168.122.50` 只负责 SSH / Web UI / QGA。
+  宿主机 ufw 必须放行 virbr1 的 UDP `47998-48010`（见第 2 节），否则视频包会被
+  INPUT DROP 静默丢弃（这就是“配对/音频正常但无视频画面”的根因之一）。
 
 ```bash
-moonlight list 192.168.122.50
+moonlight list 192.168.200.2
 
-# 窗口化串流（客户端 16:10 3200x2000 @165Hz，已验证）
-moonlight stream --resolution 3200x2000 --fps 165 --display-mode windowed --bitrate 50000 192.168.122.50 Desktop
+# 1) 先切到串流模式（会短暂重启 Sunshine）
+bash {repo}/scripts/host/stream-mode.sh on
 
-# 全屏
-moonlight stream --resolution 3200x2000 --fps 165 --display-mode fullscreen 192.168.122.50 Desktop
+# 2) 窗口化串流（参考目标 16:10 2560x1600 @90Hz，走专用网，200% 缩放）
+moonlight stream --resolution 2560x1600 --fps 90 --display-mode windowed --bitrate 50000 --video-codec auto 192.168.200.2 Desktop
+
+# 可选：全屏 / 显式指定 AV1 或 HEVC
+moonlight stream --resolution 2560x1600 --fps 90 --display-mode fullscreen --video-codec AV1 192.168.200.2 Desktop
+moonlight stream --resolution 2560x1600 --fps 90 --display-mode fullscreen --video-codec HEVC 192.168.200.2 Desktop
+# 3200x2000@165 仍可用，但接近 QSV 上限（见第 8 节）
+
+# 3) 串流结束后恢复救援屏（VirtIO 主屏 + VDD 副屏）
+bash {repo}/scripts/host/stream-mode.sh off
 ```
 
-编码：`encoder=quicksync`，HEVC/AV1 自动通告；实测 `h264_qsv / hevc_qsv / av1_qsv`，
-3200x2000@165 下走 HEVC，约 39 Mbps。
+编码：`encoder=quicksync`，`av1_mode=0 / hevc_mode=0`（按编码器能力自动
+通告，官方推荐值；2/3 才表示显式通告 8-bit/10-bit）。实测
+`h264_qsv / hevc_qsv / av1_qsv` 均可用；2560x1600@90 下客户端 `auto` 走
+HEVC，2026-08-26 实测连接→断开全流程干净。**帧率上限**：官方 Sunshine
+写死 `async_depth=1`，3200x2000 全管线约 70-80 FPS（编码器本身 153 FPS）；
+仓库补丁
+`patches/sunshine-qsv-async-depth.patch` + `build-sunshine-patched.ps1` 增加
+`qsv_async_depth` 配置项（见第 8 节）。**当前参考机 = 补丁版 +
+`qsv_async_depth = 1`**：2026-08-26 实测 25 秒连接后强制断开，Sunshine 日志
+`Session ended` 且进程保持存活；调高到 4 会触发断开时 Hang（勿在生产使用）。
 
-新增设备配对：
+**为什么串流前要先切模式**：VirtIO 显卡活跃时本机 Windows 的
+`SetDisplayConfig` 校验返回 `ERROR_GEN_FAILURE`，Sunshine 无法把 VDD 设为主屏，
+串流会显示“空副屏”（只有壁纸、没有任务栏），看起来不能操作。`OnlyVdd` 在
+PnP 层禁用 VirtIO 显卡后，VDD 成为唯一主屏，显示 API 恢复（Sunshine 日志
+`API is available: true`）。因此**串流模式与 VNC 救援屏互斥**，结束后务必
+`RestoreBoth`。
+
+新增设备配对（地址务必用专用网）：
 
 ```bash
-moonlight pair --pin 2468 192.168.122.50
+moonlight pair --pin 2468 192.168.200.2
 # 然后用上面 Web UI 账号登录，输入 Moonlight 显示的 4 位 PIN
 ```
 
-guest 相关文件：`C:\\Program Files\\Sunshine\\config\\sunshine.conf` / `sunshine_state.json` / `sunshine.log`。
+guest 相关文件：
+`C:\\Program Files\\Sunshine\\config\\sunshine.conf` / `sunshine_state.json` /
+`sunshine.log`；启动入口是计划任务 `SunshineUser`（必须带
+`WorkingDirectory=C:\\Program Files\\Sunshine`），包装器
+`C:\\Admin\\scripts\\start-sunshine.ps1` 负责开机顺序（先等 VDD + Arc VF）。
 
 ---
 
@@ -382,11 +439,26 @@ guest 相关文件：`C:\\Program Files\\Sunshine\\config\\sunshine.conf` / `sun
 ```powershell
 # guest 上执行
 C:\\Admin\\scripts\\fix-display-topology.ps1
-Restart-Service SunshineService
+Start-ScheduledTask -TaskName SunshineUser   # 不要再用 SunshineService（Manual/Stopped）
 ```
 
 登录任务 `FixDisplayTopology` 开机自动执行同一逻辑。不要裸用
 `DisplaySwitch /internal → /extended`，它会把 VDD 踢掉。
+
+### A2. Sunshine 启动即崩溃（0xC0000005），日志含 `Couldn't compile [assets/shaders/...] 0x80070003`
+
+`SunshineUser` 任务的 `WorkingDirectory` 丢了（Task Scheduler 默认
+`C:\\Windows\\System32`），Sunshine 找不到自己的 shader 资产。重建任务：
+
+```powershell
+C:\\Admin\\scripts\\setup-sunshine-user-task.ps1
+Stop-ScheduledTask -TaskName SunshineUser
+Get-Process Sunshine -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-ScheduledTask -TaskName SunshineUser
+```
+
+正常日志应以 `Compiled shaders` + `Found H.264 encoder: h264_qsv` 开头，
+进程保持存活。
 
 ### B. VNC 黑屏但 VM 健康
 
@@ -398,7 +470,19 @@ virsh -c qemu:///system qemu-agent-command win11 \\
   '{{"execute":"guest-exec","arguments":{{"path":"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe","arg":["-NoProfile","-ExecutionPolicy","Bypass","-File","C:\\\\Admin\\\\scripts\\\\display-rescue.ps1"],"capture-output":true}}}}'
 ```
 
-恢复 VDD：`pnputil /enable-device "ROOT\\DISPLAY\\0000"` 后重跑 `fix-display-topology.ps1`。
+恢复 VDD：`pnputil /enable-device "ROOT\\DISPLAY\\0000"` 后重跑
+`fix-display-topology.ps1`。**Intel 驱动升级后** VDD 可能直接缺失或 Error，
+`pnputil` 也救不回来，必须重建根设备：
+
+```powershell
+C:\\Admin\\VDD\\devcon.exe install C:\\Admin\\VDD\\MttVDD.inf Root\\MttVDD
+C:\\Admin\\scripts\\fix-display-topology.ps1
+Start-ScheduledTask -TaskName SunshineUser
+```
+
+完整有序升级（停 Sunshine → 禁用 VDD → 安装驱动 → 重启 → 重建 VDD → 启动）
+由 `C:\\Admin\\scripts\\upgrade-intel-driver.ps1` 一条命令完成，重启后用
+RunOnce 自动续跑。
 
 ### C. SSH 也断了（QGA 仍通）
 
@@ -459,9 +543,14 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 | `{data_root}/iso/Win11.iso` | 重装用 Windows ISO（当前未挂载） |
 | `/var/lib/libvirt/images/virtio-win.iso` | VirtIO/QGA 驱动 ISO（当前未挂载） |
 | guest `C:\\Admin\\scripts\\` | 全部 PowerShell 运维脚本 |
+| guest `C:\\Admin\\scripts\\stream-display-mode.ps1` | 串流/救援模式切换（含 Sunshine 重启） |
 | guest `C:\\Admin\\config\\local-secrets.json` | guest 侧密码副本 |
 | guest `C:\\VirtualDisplayDriver\\vdd_settings.xml` | VDD 分辨率/刷新率配置（含 3200x2000@165） |
 | guest `C:\\Admin\\VDD` / `C:\\Admin\\VBCABLE` / `C:\\Admin\\tools` | 驱动包与工具（devcon、MultiMonitorTool） |
+| guest `C:\\Admin\\tools\\ffmpeg\\` | FFmpeg/ffprobe/ffplay（QSV 诊断与压测） |
+| guest `C:\\Admin\\logs\\` | 安装/升级/启动/拓扑等全部运维日志 |
+| guest `C:\\Admin\\build\\` | Sunshine 源码与补丁构建（`sunshine-src`、`sunshine-stage`） |
+| `{repo}/patches/` | `sunshine-qsv-async-depth.patch`（构建补丁） |
 
 ---
 
@@ -471,13 +560,29 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 - Windows 26H1 拒绝仅第三方代码签名 CA 的内核驱动（如 VDD 项目 Virtual Audio Driver，
   报 `CM_PROB_UNSIGNED_DRIVER / 0xC0000428`），音频使用签名的 VB-CABLE。
 - CachyOS 不在 Intel GFX SR-IOV 官方验证矩阵（官方为 Ubuntu 24.04.4 + kernel 6.18）。
-- Intel 显卡驱动大版本升级前，先禁用/卸载 VDD，再升级。
+- Intel 显卡驱动升级已验证一次（8356 → 8974）：升级后 VDD 必须用 devcon
+  重建（`pnputil /enable-device` 不够），流程见 `upgrade-intel-driver.ps1`。
+- **帧率上限**：官方 Sunshine 的 QSV 写死 `async_depth=1`，3200x2000 下实测
+  全管线约 70-80 FPS（HEVC），即便编码器本身可到 ~153 FPS。仓库补丁
+  `patches/sunshine-qsv-async-depth.patch` 增加 `qsv_async_depth` 配置项，
+  `build-sunshine-patched.ps1` 负责重编；参考机当前安装补丁版并保持
+  `qsv_async_depth = 1`（与官方行为一致，连接/断开稳定）。把该值调到 4 后，
+  客户端断开时 Sunshine 会 `Fatal: Hang detected!` 并退出；2/3/4 仅作实验，
+  必须通过真实连接→断开测试后再用。未做脚本化满帧率压测，实际持续帧率以
+  日常使用为准。**参考目标为 2560x1600@90 + 200% 缩放**；165Hz@3200x2000
+  接近该 VF 的 QSV 极限，稳定满 165 FPS 可能需要降到 2560x1600 或更轻的
+  preset。桌面静止时帧率低是 DDAPI 设计行为，不是故障。
+- **显示 API 冲突 / 模式互斥**：VirtIO 显卡活跃时 `SetDisplayConfig` 返回
+  `ERROR_GEN_FAILURE`，Sunshine/MultiMonitorTool 无法把 VDD 设为主屏，串流会
+  显示空副屏。串流模式通过 PnP 禁用 VirtIO 显卡解决，因此串流模式与 VNC
+  救援屏互斥；切换脚本会重启 Sunshine，不要在会话进行中切换。
 - 局域网其他设备串流未验证（需要 ufw/DNAT，见 linux-prerequisites.md §6）。
 - guest 通过 libvirt NAT 上外网默认被 ufw 挡住（`DEFAULT_FORWARD_POLICY="DROP"`）。
 
 ---
 
-*由 `{repo}/scripts/host/gen-local-manual.py` 于 {now} 生成。*
+*由 `{repo}/scripts/host/gen-local-manual.py` 于 {now} 生成。仓库 HEAD
+`{facts.get('git_head')}`。*
 *密码/状态变化后：重新运行上面的一键命令即可。*
 """
 
