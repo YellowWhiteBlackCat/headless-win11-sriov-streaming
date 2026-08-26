@@ -211,7 +211,6 @@
     </resolutions>
     <options>
         <CustomEdid>false</CustomEdid>
-        <PreventSpoof>false</PreventSpoof>
         <EdidCeaOverride>false</EdidCeaOverride>
         <HardwareCursor>true</HardwareCursor>
         <SDR10bit>false</SDR10bit>

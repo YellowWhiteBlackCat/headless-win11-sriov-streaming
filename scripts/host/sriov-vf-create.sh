@@ -9,7 +9,7 @@ set -eu
 # Usage: sriov-vf-create.sh [PF] [VF_COUNT]
 
 PF="${1:-0000:00:02.0}"
-VF_COUNT="${2:-1}"
+VF_COUNT="${2:-2}"
 DEV="/sys/bus/pci/devices/$PF"
 EXPECTED_DRIVER="${EXPECTED_DRIVER:-xe}"
 

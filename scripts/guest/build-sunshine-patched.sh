@@ -39,9 +39,9 @@ cmake -B build -G Ninja -S . \
   -DBUILD_WERROR=OFF \
   -DSUNSHINE_SKIP_WIX=ON \
   -DSUNSHINE_ASSETS_DIR=assets \
-  -DSUNSHINE_PUBLISHER_NAME=zhugenanbei \
-  -DSUNSHINE_PUBLISHER_WEBSITE="https://github.com/YellowWhiteBlackCat" \
-  -DSUNSHINE_PUBLISHER_ISSUE_URL="https://github.com/YellowWhiteBlackCat/headless-win11-sriov-streaming/issues" \
+  -DSUNSHINE_PUBLISHER_NAME="${SUNSHINE_PUBLISHER_NAME:-Headless Win11 Streamer}" \
+  -DSUNSHINE_PUBLISHER_WEBSITE="${SUNSHINE_PUBLISHER_WEBSITE:-https://github.com/YellowWhiteBlackCat}" \
+  -DSUNSHINE_PUBLISHER_ISSUE_URL="${SUNSHINE_PUBLISHER_ISSUE_URL:-https://github.com/YellowWhiteBlackCat/headless-win11-sriov-streaming/issues}" \
   | tee -a "$LOG"
 
 log "Building (this can take a while)"

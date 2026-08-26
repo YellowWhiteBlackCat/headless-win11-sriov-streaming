@@ -8,7 +8,7 @@ guest a hardware environment as complete as a normal development PC.
 | Area | Configuration | Why |
 | --- | --- | --- |
 | Machine | `pc-q35-11.1` | Modern PCIe PC platform instead of legacy i440FX |
-| CPU | `host-passthrough`, `1 socket / 4 cores / 1 thread`, pinned vCPU 4-7 | Full host feature set; host has no SMT so 4c/1t is the honest topology |
+| CPU | `host-passthrough`, `1 socket / 2 cores / 1 thread`, pinned vCPU 4-5 (emulator 6-7) | Full host feature set; host has no SMT so 2c/1t is the honest topology |
 | Firmware | OVMF (`OVMF_CODE.secboot.4m.fd`) + per-VM `win11_VARS.fd` | Real UEFI variable storage; each VM gets its own copy |
 | TPM | `tpm-crb` + `swtpm` 2.0 emulator | Realistic TPM 2.0 for Windows 11 |
 | Disk | virtio-blk, qcow2, `cache=none`, `discard=unmap` | Fast, standard VirtIO storage |
@@ -35,9 +35,9 @@ These changes improve guest scheduling, reboot robustness and MSR tolerance.
 
 ## 4. Stability notes
 
-- Keep the validated **4 vCPU / 6 GiB / 256 GiB** allocation; changing memory
+- Keep the validated **2 vCPU / 6 GiB / 256 GiB** allocation; changing memory
   or topology is an unvalidated configuration.
-- The host (Intel Core Ultra X7 358H) exposes no SMT, so `4 cores / 1 thread`
+- The host (Intel Core Ultra X7 358H) exposes no SMT, so `2 cores / 1 thread`
   is correct; do not set `threads=2` just because a generic guide suggests it.
 - `migratable='on'` is kept deliberately: this VM is not migrated, and flipping
   it off buys almost nothing while widening the feature surface.

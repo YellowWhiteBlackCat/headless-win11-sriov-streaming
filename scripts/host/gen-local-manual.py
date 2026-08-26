@@ -315,9 +315,9 @@ sudo ufw reload
 
 参考常量（脚本内置快照，guest 变更后会自动覆盖上述实测值）：
 
-- 资源：4 vCPU / 6 GiB / 256 GiB；UUID `8353f52b-bbb1-4cfa-b85a-bc2e99175348`
-- 网卡 1：MAC `52:54:00:30:cb:92` → `192.168.122.50/24`
-- 网卡 2：MAC `52:54:00:40:cb:92` → `192.168.200.2/24`
+- 资源：2 vCPU / 6 GiB / 256 GiB（UUID/MAC 以实测为准，见上方 domiflist/domifaddr）
+- 网卡 1：静态 DHCP `192.168.122.50/24`（管理网，MAC 见 domiflist）
+- 网卡 2：静态 DHCP `192.168.200.2/24`（Moonlight 专用串流网，MAC 见 domiflist）
 - 系统盘：`{data_root}/libvirt/win11/win11.qcow2`（vda；安装 ISO 已摘除）
 - 关键服务：QEMU-GA / sshd / SunshineService / Audiosrv（均自动启动）
 - 显示：VDD 是唯一显示器（2560x1600@90、200% 缩放）；VirtIO 视频设备已从域中
@@ -590,7 +590,7 @@ C:\\Admin\\scripts\\set-sunshine-creds.ps1 -Username sunshine -Password <新密�
 - CachyOS 不在 Intel GFX SR-IOV 官方验证矩阵（官方为 Ubuntu 24.04.4 + kernel 6.18）。
 - Intel 显卡驱动升级已验证两次（8356 → 8974 → 8991）：升级后 VDD 必须重建。
   `upgrade-intel-driver.ps1` 会自动做；若出现重复 VDD 节点
-  （`ROOT\DISPLAY\0001`），运行 `rebuild-vdd.ps1`（pnputil 删除全部 VDD 节点
+  （`ROOT\\DISPLAY\\0001`），运行 `rebuild-vdd.ps1`（pnputil 删除全部 VDD 节点
   后重装唯一一个）。Sunshine 只能由 `SunshineUser` 交互任务启动，从 SSH/
   服务会话直接启动会因查询显示器被拒绝而看到 0 个显示器。
 - **帧率上限**：官方 Sunshine 的 QSV 写死 `async_depth=1`，3200x2000 下实测

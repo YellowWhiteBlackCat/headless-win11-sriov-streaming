@@ -18,7 +18,7 @@
   the VFs exist after every boot:
 
   ```bash
-  sudo scripts/host/install-sriov-service.sh 0000:00:02.0 1
+  sudo scripts/host/install-sriov-service.sh 0000:00:02.0 2
   ```
 
 - `gen-local-manual.py` — one-command generator for the local, secret-bearing

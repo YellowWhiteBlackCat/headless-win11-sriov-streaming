@@ -15,7 +15,7 @@ fi
 cd "$(dirname "$0")"
 
 PF="${1:-0000:00:02.0}"
-VF_COUNT="${2:-1}"
+VF_COUNT="${2:-2}"
 SERVICE_NAME="intel-sriov-vf.service"
 CREATE_BIN="/usr/local/sbin/intel-sriov-vf-create"
 

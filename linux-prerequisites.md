@@ -21,7 +21,7 @@ networks, firewall notes, storage and verification.
 | VF persistence | systemd oneshot `b390-sriov.service` |
 | Firewall | `ufw` installed and enabled |
 | Guest OS | Windows 11 Pro 26H1, build `28000.1` |
-| Guest resources | 4 vCPU / 6 GiB runtime-lean target (original validation used 8 GiB) / 256 GiB disk |
+| Guest resources | 2 vCPU / 6 GiB runtime-lean target (original validation used 8 GiB) / 256 GiB disk |
 | Moonlight (host client) | `6.1.0` |
 
 > Intel's GFX SR-IOV Toolkit officially lists Ubuntu 24.04.4 + kernel 6.18 in
@@ -111,7 +111,7 @@ ls /sys/kernel/iommu_groups | wc -l   # reference host: 26
 - The PF is owned by the GPU driver: `xe` on newer Arc/Panther Lake, `i915` on
   older iGPU SR-IOV setups.
 - IOMMU is active (step 3).
-- The PF reports enough VFs: `sriov_totalvfs >= 1`.
+- The PF reports enough VFs: `sriov_totalvfs >= 2`.
 - VFs are created **unbound**: set `sriov_drivers_autoprobe = 0` **before**
   writing `sriov_numvfs`, otherwise the kernel may bind a VF to a random
   driver before libvirt can attach it.
@@ -124,7 +124,7 @@ ls /sys/kernel/iommu_groups | wc -l   # reference host: 26
 ```bash
 PF=0000:00:02.0
 echo 0 | sudo tee /sys/bus/pci/devices/$PF/sriov_drivers_autoprobe
-echo 1 | sudo tee /sys/bus/pci/devices/$PF/sriov_numvfs
+echo 2 | sudo tee /sys/bus/pci/devices/$PF/sriov_numvfs
 lspci -nnk -d 8086:
 ```
 
@@ -140,7 +140,7 @@ Expected after the VM starts:
 Use the helper scripts in `scripts/host/`:
 
 ```bash
-sudo scripts/host/install-sriov-service.sh 0000:00:02.0 1
+sudo scripts/host/install-sriov-service.sh 0000:00:02.0 2
 systemctl status intel-sriov-vf.service
 ```
 

@@ -2,12 +2,12 @@
 #
 # Read-only preflight check for the Linux host before deploying the Windows VM.
 # No system state is modified. Override values with environment variables:
-#   PF=0000:00:02.0 VF_COUNT=1 DOM=win11 SSH_HOST=win-dev
+#   PF=0000:00:02.0 VF_COUNT=2 DOM=win11 SSH_HOST=win-dev
 
 set -u
 
 PF="${PF:-0000:00:02.0}"
-VF_COUNT="${VF_COUNT:-1}"
+VF_COUNT="${VF_COUNT:-2}"
 DOM="${DOM:-win11}"
 SSH_HOST="${SSH_HOST:-win-dev}"
 

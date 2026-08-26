@@ -620,7 +620,7 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
 | OpenSSH (guest) | `9.8.3.0` (Win32-OpenSSH preview) |
 | winget | `1.29.290` |
 | Moonlight (host client) | `6.1.0` |
-| Guest resources | 4 vCPU / 6 GiB / 256 GiB qcow2 |
+| Guest resources | 2 vCPU / 6 GiB / 256 GiB qcow2 |
 
 ### Known limitations
 
@@ -698,10 +698,10 @@ carefully documented reference, not a guarantee for every host, kernel or GPU.
   exposing this VM beyond your own host.
 - The generic Windows 11 Pro key in `Autounattend.xml` only unlocks Setup; it
   carries no activation entitlement and activation is out of scope.
-- The 4C/6G/256G configuration is the validated setup, not a benchmark or a
+- The 2C/6G/256G configuration is the validated setup, not a benchmark or a
   performance ceiling.
 - `lean-runtime.ps1` can reduce runtime services, but the reference templates
-  keep the validated **4 vCPU / 6 GiB / 256 GiB** configuration; treat a
+  keep the validated **2 vCPU / 6 GiB / 256 GiB** configuration; treat a
   different memory size as your own unvalidated configuration.
 
 ## Security notes

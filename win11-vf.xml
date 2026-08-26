@@ -1,7 +1,6 @@
 <domain type='kvm'>
   <!-- Example domain with Intel Arc SR-IOV VF: adjust UUID, VF BDF, MACs, CPU pinning and disk paths to your host -->
   <name>win11</name>
-  <uuid>8353f52b-bbb1-4cfa-b85a-bc2e99175348</uuid>
   <metadata>
     <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
       <libosinfo:os id="http://microsoft.com/win/11"/>
@@ -13,13 +12,11 @@
     <source type='memfd'/>
     <access mode='shared'/>
   </memoryBacking>
-  <vcpu placement='static'>4</vcpu>
+  <vcpu placement='static'>2</vcpu>
   <cputune>
     <vcpupin vcpu='0' cpuset='4'/>
     <vcpupin vcpu='1' cpuset='5'/>
-    <vcpupin vcpu='2' cpuset='6'/>
-    <vcpupin vcpu='3' cpuset='7'/>
-    <emulatorpin cpuset='8-11'/>
+    <emulatorpin cpuset='6-7'/>
   </cputune>
   <resource>
     <partition>/machine</partition>
@@ -60,7 +57,7 @@
     <smm state='on'/>
   </features>
   <cpu mode='host-passthrough' check='none' migratable='on'>
-    <topology sockets='1' dies='1' clusters='1' cores='4' threads='1'/>
+    <topology sockets='1' dies='1' clusters='1' cores='2' threads='1'/>
   </cpu>
   <clock offset='localtime'>
     <timer name='rtc' tickpolicy='catchup'/>
